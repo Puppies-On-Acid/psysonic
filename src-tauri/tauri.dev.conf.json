@@ -1,4 +1,13 @@
 {
+  "productName": "Psysonic Dev",
+  "identifier": "dev.psysonic.player.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Psysonic Dev"
+      }
+    ]
+  },
   "bundle": {
     "icon": [
       "icons/32x32.png",
