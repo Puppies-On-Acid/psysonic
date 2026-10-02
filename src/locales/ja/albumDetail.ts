@@ -38,6 +38,7 @@ export const albumDetail = {
   trackGenre: 'ジャンル',
   trackGenres: 'ジャンル',
   trackMood: 'ムード',
+  trackPlaylists: 'プレイリスト',
   trackPlayCount: '再生数',
   trackLastPlayed: '最終再生',
   trackBpm: 'BPM',

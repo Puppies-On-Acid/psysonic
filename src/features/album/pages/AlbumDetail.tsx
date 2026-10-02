@@ -604,6 +604,8 @@ const handleShuffleAll = () => {
         sortDir={sortDir}
         onSort={handleSort}
         actionPolicy={albumActionPolicy}
+        playlistMembershipServerId={albumOwnerServerId}
+        playlistMembershipHydrationEnabled={!offlineCtx.active}
       />
 
       {relatedAlbums.length > 0 && (
