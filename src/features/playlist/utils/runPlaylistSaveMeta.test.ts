@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updatePlaylistMetaMock = vi.hoisted(() => vi.fn());
 const ndUpdatePlaylistMetaMock = vi.hoisted(() => vi.fn());
+const patchPlaylistMetadataMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api/subsonicPlaylists', () => ({
   getPlaylist: vi.fn(),
@@ -14,6 +15,11 @@ vi.mock('@/lib/api/navidromeSmart', () => ({
   ndUpdatePlaylistMeta: ndUpdatePlaylistMetaMock,
 }));
 vi.mock('@/lib/dom/toast', () => ({ showToast: vi.fn() }));
+vi.mock('@/features/playlist/store/playlistStore', () => ({
+  usePlaylistStore: {
+    getState: () => ({ patchPlaylistMetadata: patchPlaylistMetadataMock }),
+  },
+}));
 
 import { runPlaylistSaveMeta } from './runPlaylistSaveMeta';
 
@@ -42,6 +48,7 @@ describe('runPlaylistSaveMeta', () => {
   beforeEach(() => {
     updatePlaylistMetaMock.mockReset().mockResolvedValue(undefined);
     ndUpdatePlaylistMetaMock.mockReset().mockResolvedValue(undefined);
+    patchPlaylistMetadataMock.mockReset();
   });
 
   it('updates smart metadata through a native partial PUT and leaves Subsonic unused', async () => {
@@ -60,6 +67,40 @@ describe('runPlaylistSaveMeta', () => {
       'srv-a',
     );
     expect(updatePlaylistMetaMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates a rename to aggregate playlist metadata immediately', async () => {
+    const deps = makeDeps('Old name', false);
+    await runPlaylistSaveMeta(deps, {
+      name: 'New name',
+      comment: 'Updated comment',
+      isPublic: true,
+      coverFile: null,
+      coverRemoved: false,
+    });
+
+    expect(patchPlaylistMetadataMock).toHaveBeenCalledWith(
+      'pl-1',
+      'srv-a',
+      {
+        name: 'New name',
+        comment: 'Updated comment',
+        public: true,
+      },
+    );
+  });
+
+  it('does not patch aggregate metadata after the detail owner became stale', async () => {
+    const deps = { ...makeDeps('Old name', false), isCurrent: () => false };
+    await runPlaylistSaveMeta(deps, {
+      name: 'New name',
+      comment: '',
+      isPublic: false,
+      coverFile: null,
+      coverRemoved: false,
+    });
+
+    expect(patchPlaylistMetadataMock).not.toHaveBeenCalled();
   });
 
   it('keeps regular playlists on the Subsonic metadata path', async () => {

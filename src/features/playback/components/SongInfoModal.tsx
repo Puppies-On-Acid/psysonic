@@ -2,6 +2,7 @@ import { getSong, getSongForServer } from '@/lib/api/subsonicLibrary';
 import { libraryGetFacts } from '@/lib/api/library';
 import type { SubsonicSong } from '@/lib/api/subsonicTypes';
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { usePlayerStore } from '@/features/playback/store/playerStore';
@@ -24,6 +25,15 @@ import {
   type ParsedTrackEnrichment,
 } from '@/lib/library/trackEnrichment';
 import i18n from '@/lib/i18n';
+import { ndGetSongPlaylists } from '@/lib/api/navidromeSmart';
+import {
+  resolveSongSmartPlaylistMemberships,
+  usePlaylistStore,
+} from '@/features/playlist';
+import { usePlaylistMembershipStore } from '@/store/playlistMembershipStore';
+import { playlistDisplayName } from '@/lib/format/playlistClassification';
+import { buildPlaylistDetailPath } from '@/lib/navigation/detailServerScope';
+import type { TrackPlaylistRef } from '@/store/playlistMembershipIndex';
 
 function formatSize(bytes?: number): string | null {
   if (!bytes) return null;
@@ -66,14 +76,53 @@ function Divider() {
   return <tr><td colSpan={2} className="song-info-divider" /></tr>;
 }
 
+function cachedPlaylistRefsForSong(
+  songId: string,
+  serverId: string,
+): TrackPlaylistRef[] {
+  const membership = usePlaylistMembershipStore.getState();
+  return usePlaylistStore
+    .getState()
+    .playlists
+    .filter(playlist => playlist.serverId === serverId)
+    .filter(playlist =>
+      membership.getPlaylistSongIds(playlist.id, serverId)?.includes(songId)
+    )
+    .map(playlist => ({
+      id: playlist.id,
+      serverId,
+      name: playlist.name,
+    }))
+    .sort((left, right) =>
+      playlistDisplayName(left).localeCompare(playlistDisplayName(right))
+    );
+}
+
+function mergePlaylistRefs(
+  ...groups: readonly (readonly TrackPlaylistRef[])[]
+): TrackPlaylistRef[] {
+  const byKey = new Map<string, TrackPlaylistRef>();
+  for (const group of groups) {
+    for (const playlist of group) {
+      byKey.set(`${playlist.serverId}:${playlist.id}`, playlist);
+    }
+  }
+  return [...byKey.values()].sort((left, right) =>
+    playlistDisplayName(left).localeCompare(playlistDisplayName(right))
+  );
+}
+
 export default function SongInfoModal() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { songInfoModal, closeSongInfo } = usePlayerStore(
     useShallow(s => ({ songInfoModal: s.songInfoModal, closeSongInfo: s.closeSongInfo }))
   );
   const [song, setSong] = useState<SubsonicSong | null>(null);
   const [enrichment, setEnrichment] = useState<ParsedTrackEnrichment | null>(null);
   const [loading, setLoading] = useState(false);
+  const [playlistMemberships, setPlaylistMemberships] = useState<TrackPlaylistRef[]>([]);
+  const [playlistMembershipLoading, setPlaylistMembershipLoading] = useState(false);
   // Absolute filesystem path resolved via Navidrome's native API in parallel
   // with the Subsonic getSong call. Subsonic only ever returns a relative
   // path (or none on Navidrome); the native endpoint is what Feishin and the
@@ -87,14 +136,20 @@ export default function SongInfoModal() {
       setSong(null);
       setEnrichment(null);
       setAbsolutePath(null);
+      setPlaylistMemberships([]);
+      setPlaylistMembershipLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setEnrichment(null);
     setAbsolutePath(null);
+    setPlaylistMemberships([]);
+    setPlaylistMembershipLoading(false);
     const songId = songInfoModal.songId;
     const ownerServerId = songInfoModal.serverId;
+    const auth = useAuthStore.getState();
+    const sid = ownerServerId ?? auth.activeServerId;
     void (async () => {
       const s = ownerServerId
         ? await getSongForServer(ownerServerId, songId)
@@ -106,7 +161,6 @@ export default function SongInfoModal() {
         setEnrichment(null);
         return;
       }
-      const sid = ownerServerId ?? useAuthStore.getState().activeServerId;
       const indexEnabled = sid ? useLibraryIndexStore.getState().isIndexEnabled(sid) : false;
       if (sid && indexEnabled && await libraryIsReady(sid)) {
         try {
@@ -124,11 +178,52 @@ export default function SongInfoModal() {
     // Try the native API in parallel; only when the active server is Navidrome
     // and we have credentials. Failures are silent — modal falls back to
     // whatever the Subsonic `path` field carried (typically nothing).
-    const auth = useAuthStore.getState();
-    const sid = ownerServerId ?? auth.activeServerId;
     const profile = sid ? auth.servers.find(p => p.id === sid) : null;
     const identity = sid ? auth.subsonicServerIdentityByServer[sid] : undefined;
     const isNavidrome = identity?.type?.trim().toLowerCase() === 'navidrome';
+    if (sid) {
+      setPlaylistMemberships(cachedPlaylistRefsForSong(songId, sid));
+    }
+    if (isNavidrome && sid) {
+      setPlaylistMembershipLoading(true);
+      let pendingPlaylistLookups = 2;
+      const finishPlaylistLookup = () => {
+        pendingPlaylistLookups -= 1;
+        if (!cancelled && pendingPlaylistLookups === 0) {
+          setPlaylistMembershipLoading(false);
+        }
+      };
+      const mergeNativePlaylists = (playlists: readonly { id: string; name: string }[]) => {
+        if (cancelled) return;
+        const refs: TrackPlaylistRef[] = playlists.map(playlist => ({
+          id: playlist.id,
+          serverId: sid,
+          name: playlist.name,
+        }));
+        setPlaylistMemberships(previous => mergePlaylistRefs(
+          previous,
+          refs,
+          cachedPlaylistRefsForSong(songId, sid),
+        ));
+      };
+
+      // Fast path: materialized/manual playlist membership.
+      ndGetSongPlaylists(songId, sid)
+        .then(mergeNativePlaylists)
+        .catch(() => {
+          // Keep whatever complete playlist memberships were already cached.
+        })
+        .finally(finishPlaylistLookup);
+
+      // Smart path: exact one-song probes. This is intentionally independent
+      // so regular playlist names do not wait for smart evaluation.
+      resolveSongSmartPlaylistMemberships(songId, sid, () => !cancelled)
+        .then(mergeNativePlaylists)
+        .catch(() => {
+          // Preserve the fast/native and cached results if smart probing fails.
+        })
+        .finally(finishPlaylistLookup);
+    }
     if (isNavidrome && profile?.url && profile.username && profile.password) {
       const serverUrl = (profile.url.startsWith('http') ? profile.url : `http://${profile.url}`).replace(/\/$/, '');
       ndGetSongPath(serverUrl, profile.username, profile.password, songId).then(p => {
@@ -184,6 +279,27 @@ export default function SongInfoModal() {
   // full set in OpenSubsonic's `genres`, which is what the album chips and genre
   // browse already read. Same separator as the mood row above.
   const genreTags = song ? genreTagsFor(song) : [];
+  const playlistValue = playlistMemberships.length > 0 ? (
+    <span className="song-info-playlists">
+      {playlistMemberships.map((playlist, index) => (
+        <React.Fragment key={`${playlist.serverId}:${playlist.id}`}>
+          {index > 0 && <span className="song-info-playlist-sep">·</span>}
+          <button
+            type="button"
+            className="track-playlist-link song-info-playlist-link"
+            onClick={() => {
+              closeSongInfo();
+              navigate(buildPlaylistDetailPath(playlist.id, {
+                serverId: playlist.serverId,
+              }));
+            }}
+          >
+            {playlistDisplayName(playlist)}
+          </button>
+        </React.Fragment>
+      ))}
+    </span>
+  ) : playlistMembershipLoading ? t('common.loading') : null;
 
   return createPortal(
     <>
@@ -217,6 +333,7 @@ export default function SongInfoModal() {
                 <Row label={t('songInfo.track')} value={trackLabel} />
                 <Row label={t('songInfo.bpm')} value={displayBpm} />
                 <Row label={t('songInfo.mood')} value={displayMood} />
+                <Row label={t('albumDetail.trackPlaylists')} value={playlistValue} />
                 <Row label={t('songInfo.playCount')} value={song.playCount} />
                 <Row label={t('songInfo.lastPlayed')} value={song.played ? formatLastSeen(song.played, i18n.language, '—') : null} />
 
