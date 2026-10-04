@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'キューから削除',
   removeFromPlaylist: 'プレイリストから削除',
   openAlbum: 'アルバムを開く',
+  openPlaylist: 'プレイリストを開く',
   goToArtist: 'アーティストへ移動',
   download: 'ダウンロード (ZIP)',
   addToPlaylist: 'プレイリストに追加',

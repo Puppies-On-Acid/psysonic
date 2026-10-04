@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'Eltávolítás a sorból',
   removeFromPlaylist: 'Eltávolítás a lejátszási listából',
   openAlbum: 'Album megnyitása',
+  openPlaylist: 'Lejátszási lista megnyitása',
   goToArtist: 'Ugrás az előadóhoz',
   download: 'Letöltés (ZIP)',
   addToPlaylist: 'Hozzáadás lejátszási listához',
