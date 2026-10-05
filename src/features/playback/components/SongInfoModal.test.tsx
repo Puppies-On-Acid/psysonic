@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getSongForServer: vi.fn(),
   libraryGetFacts: vi.fn(),
   ndGetSongPath: vi.fn(),
+  ndGetSongPlaylists: vi.fn(),
+  resolveSongSmartPlaylistMemberships: vi.fn(),
 }));
 
 vi.mock('@/lib/api/subsonicLibrary', () => ({
@@ -15,6 +17,16 @@ vi.mock('@/lib/api/subsonicLibrary', () => ({
 }));
 vi.mock('@/lib/api/library', () => ({ libraryGetFacts: mocks.libraryGetFacts }));
 vi.mock('@/lib/api/navidromeAdmin', () => ({ ndGetSongPath: mocks.ndGetSongPath }));
+vi.mock('@/lib/api/navidromeSmart', () => ({
+  ndGetSongPlaylists: mocks.ndGetSongPlaylists,
+}));
+vi.mock('@/features/playlist', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/playlist')>();
+  return {
+    ...actual,
+    resolveSongSmartPlaylistMemberships: mocks.resolveSongSmartPlaylistMemberships,
+  };
+});
 vi.mock('@/lib/library/libraryReady', () => ({ libraryIsReady: vi.fn(() => Promise.resolve(true)) }));
 vi.mock('@/store/libraryIndexStore', () => ({
   useLibraryIndexStore: { getState: () => ({ isIndexEnabled: () => true }) },
@@ -24,6 +36,8 @@ import SongInfoModal from './SongInfoModal';
 import { resetAuthStore, resetPlayerStore } from '@/test/helpers/storeReset';
 import { useAuthStore } from '@/store/authStore';
 import { usePlayerStore } from '@/features/playback/store/playerStore';
+import { usePlaylistStore } from '@/features/playlist';
+import { usePlaylistMembershipStore } from '@/store/playlistMembershipStore';
 
 describe('SongInfoModal server ownership', () => {
   beforeEach(() => {
@@ -50,6 +64,18 @@ describe('SongInfoModal server ownership', () => {
     });
     mocks.libraryGetFacts.mockResolvedValue([]);
     mocks.ndGetSongPath.mockResolvedValue('/owner/music/song.flac');
+    mocks.ndGetSongPlaylists.mockResolvedValue([]);
+    mocks.resolveSongSmartPlaylistMemberships.mockResolvedValue([]);
+    usePlaylistStore.setState({
+      playlists: [],
+      playlistsLoading: false,
+      recentIds: [],
+      lastModified: {},
+    });
+    usePlaylistMembershipStore.setState({
+      songIdsByCacheKey: {},
+      revision: 0,
+    });
   });
 
   it('loads metadata, local facts, and native path from the captured owner', async () => {
@@ -67,6 +93,72 @@ describe('SongInfoModal server ownership', () => {
       'shared',
     );
     expect(await view.findByText('/owner/music/song.flac')).toBeInTheDocument();
+  });
+
+  it('shows the fast playlist result without waiting for smart probes', async () => {
+    let resolveSmart!: (value: Array<{ id: string; name: string }>) => void;
+    mocks.ndGetSongPlaylists.mockResolvedValue([
+      { id: 'road', name: 'Road Trip' },
+    ]);
+    mocks.resolveSongSmartPlaylistMemberships.mockReturnValue(new Promise(resolve => {
+      resolveSmart = resolve;
+    }));
+
+    usePlayerStore.getState().openSongInfo('shared', 'srv-owner');
+    const view = renderWithProviders(<SongInfoModal />);
+
+    expect(await view.findByRole('button', { name: 'Road Trip' })).toBeInTheDocument();
+    expect(view.queryByRole('button', { name: 'Focus' })).not.toBeInTheDocument();
+    expect(mocks.ndGetSongPlaylists).toHaveBeenCalledWith('shared', 'srv-owner');
+
+    resolveSmart([{ id: 'focus', name: 'Focus' }]);
+    expect(await view.findByRole('button', { name: 'Focus' })).toBeInTheDocument();
+    expect(mocks.resolveSongSmartPlaylistMemberships).toHaveBeenCalledWith(
+      'shared',
+      'srv-owner',
+      expect.any(Function),
+    );
+  });
+
+  it('merges cached smart membership with a native regular-only result', async () => {
+    usePlaylistStore.setState({
+      playlists: [
+        {
+          id: 'road',
+          serverId: 'srv-owner',
+          name: 'Road Trip',
+          songCount: 1,
+          duration: 120,
+          created: '',
+          changed: '',
+          smart: false,
+        },
+        {
+          id: 'smart-focus',
+          serverId: 'srv-owner',
+          name: 'Focus',
+          songCount: 1,
+          duration: 120,
+          created: '',
+          changed: '',
+          smart: true,
+          smartRules: { all: [{ is: { genre: 'Jazz' } }] },
+        },
+      ],
+    });
+    usePlaylistMembershipStore
+      .getState()
+      .setPlaylistSongIds('smart-focus', ['shared'], 'srv-owner');
+    mocks.ndGetSongPlaylists.mockResolvedValue([
+      { id: 'road', name: 'Road Trip' },
+    ]);
+    mocks.resolveSongSmartPlaylistMemberships.mockResolvedValue([]);
+
+    usePlayerStore.getState().openSongInfo('shared', 'srv-owner');
+    const view = renderWithProviders(<SongInfoModal />);
+
+    expect(await view.findByRole('button', { name: 'Road Trip' })).toBeInTheDocument();
+    expect(await view.findByRole('button', { name: 'Focus' })).toBeInTheDocument();
   });
 
   /**

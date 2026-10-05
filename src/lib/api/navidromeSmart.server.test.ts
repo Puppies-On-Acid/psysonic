@@ -28,7 +28,10 @@ vi.mock('@/store/authStore', () => ({
 import {
   ndCreateSmartPlaylist,
   ndGetSmartPlaylist,
+  ndGetPlaylistTrackIds,
   ndGetPlaylistTracks,
+  ndGetSongPlaylists,
+  ndGetSongSmartPlaylists,
   ndListPlaylists,
   ndPreviewSmartPlaylist,
   ndUpdatePlaylistMeta,
@@ -134,6 +137,107 @@ describe('Navidrome smart playlist owner routing', () => {
       body: { name: 'Smart', rules: { all: [{ contains: { title: 'a' } }] } },
     }));
     expect(invokeMock.mock.calls[0]?.[1].body).not.toHaveProperty('sync');
+  });
+
+  it('looks up playlists containing one song through the native route', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479', name: 'Road Trip' },
+    ]);
+
+    await expect(ndGetSongPlaylists('track-1', 'b')).resolves.toEqual([
+      { id: '7rke2SAWaicSeSYzkhww6R', name: 'Road Trip' },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'nd_get_song_playlists',
+      expect.objectContaining({
+        serverUrl: 'https://b.test',
+        token: 'token-b',
+        id: 'track-1',
+      }),
+    );
+  });
+
+  it('probes smart playlists for one song with filtered serial requests', async () => {
+    invokeMock
+      .mockResolvedValueOnce([
+        { id: 'regular', name: 'Regular', songCount: 1, rules: null },
+        { id: 'smart-1', name: 'Smart One', songCount: 0, rules: { all: [] } },
+        { id: 'smart-2', name: 'Smart Two', songCount: 0, rules: { any: [] } },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: '1', mediaFileId: 'track-1' },
+      ]);
+
+    await expect(
+      ndGetSongSmartPlaylists('track-1', 'b'),
+    ).resolves.toEqual([
+      { id: 'smart-2', name: 'Smart Two' },
+    ]);
+
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      'nd_get_playlist_tracks',
+      expect.objectContaining({
+        id: 'smart-1',
+        start: 0,
+        end: 1,
+        mediaFileId: 'track-1',
+      }),
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      3,
+      'nd_get_playlist_tracks',
+      expect.objectContaining({
+        id: 'smart-2',
+        start: 0,
+        end: 1,
+        mediaFileId: 'track-1',
+      }),
+    );
+  });
+
+  it('collects native smart membership ids from the evaluated tracks endpoint', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { id: '1', mediaFileId: 't1', title: 'One' },
+      { id: '2', mediaFileId: 't2', title: 'Two' },
+    ]);
+
+    await expect(ndGetPlaylistTrackIds('smart', 'b')).resolves.toEqual([
+      't1',
+      't2',
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'nd_get_playlist_tracks',
+      expect.objectContaining({
+        id: 'smart',
+        start: 0,
+        end: 500,
+      }),
+    );
+  });
+
+  it('canonicalizes legacy native track ids before membership caching', async () => {
+    invokeMock.mockResolvedValueOnce([
+      {
+        id: '17',
+        mediaFileId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      },
+    ]);
+
+    await expect(ndGetPlaylistTrackIds('smart', 'b')).resolves.toEqual([
+      '7rke2SAWaicSeSYzkhww6R',
+    ]);
+  });
+
+  it('fails closed instead of caching incomplete native membership when mediaFileId is missing', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { id: '1', mediaFileId: 't1' },
+      { id: '2', title: 'Missing media file id' },
+    ]);
+
+    await expect(ndGetPlaylistTrackIds('smart', 'b'))
+      .rejects.toThrow('Navidrome playlist track is missing a mediaFileId');
   });
 
   it('previews existing playlists via tracks and unsaved rules via a temporary playlist', async () => {

@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'Șterge din Coadă',
   removeFromPlaylist: 'Șterge din Playlist',
   openAlbum: 'Deschide Albumul',
+  openPlaylist: 'Deschide lista de redare',
   goToArtist: 'Vezi Artistul',
   download: 'Descarcă (ZIP)',
   addToPlaylist: 'Adaugă la Playlist',

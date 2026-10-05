@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'Премахни от опашката',
   removeFromPlaylist: 'Премахни от плейлиста',
   openAlbum: 'Отвори албума',
+  openPlaylist: 'Отвори плейлиста',
   goToArtist: 'Отиди при изпълнителя',
   download: 'Изтегляне (ZIP)',
   addToPlaylist: 'Добави в плейлист',
