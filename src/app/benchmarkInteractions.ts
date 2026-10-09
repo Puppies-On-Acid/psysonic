@@ -336,8 +336,11 @@ function sentinelItemCount(sentinel: HTMLElement | null): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-async function runPaginationInteraction(route: string): Promise<BenchmarkInteractionResult> {
-  return measureInteraction('pagination:scroll-next-page', 'pagination', async () => {
+async function runPaginationInteraction(
+  route: string,
+  name = 'pagination:scroll-next-page',
+): Promise<BenchmarkInteractionResult> {
+  return measureInteraction(name, 'pagination', async () => {
     const initialSentinel = document.querySelector<HTMLElement>('[data-benchmark-scroll-sentinel]');
     if (!initialSentinel) {
       return { status: 'skipped', details: { reason: 'no additional page available' } };
@@ -371,6 +374,84 @@ async function runPaginationInteraction(route: string): Promise<BenchmarkInterac
   });
 }
 
+async function runGenreDetailInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = '[data-benchmark-genre-detail-view]';
+  const albumsControl = '[data-benchmark-genre-view="albums"]';
+  const tracksControl = '[data-benchmark-genre-view="tracks"]';
+  const results: BenchmarkInteractionResult[] = [];
+
+  results.push(
+    await runPaginationInteraction(
+      route,
+      'pagination:albums-next-page',
+    ),
+  );
+
+  try {
+    const tracks = await measureInteraction(
+      'view:tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: {
+              reason: 'genre Tracks tab unavailable',
+            },
+          };
+        }
+
+        const completed = await waitForBrowseState(
+          rootSelector,
+          'data-benchmark-genre-detail-view',
+          'tracks',
+        );
+
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    );
+    results.push(tracks);
+
+    if (
+      tracks.status === 'completed' &&
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks'
+    ) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:tracks-next-page',
+        ),
+      );
+    }
+  } finally {
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks' &&
+      click(albumsControl)
+    ) {
+      await waitForBrowseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+        'albums',
+      );
+    }
+  }
+
+  return results;
+}
+
 export async function runBenchmarkInteractions(
   route: string,
   searchQuery: string | null,
@@ -381,6 +462,9 @@ export async function runBenchmarkInteractions(
   if (path === '/search/advanced') {
     const search = await runSearchInteraction(searchQuery);
     return [search, await runPaginationInteraction(route)];
+  }
+  if (/^\/genres\/[^/]+$/.test(path)) {
+    return runGenreDetailInteractions(route);
   }
   if (routeSupportsScrollPagination(route)) return [await runPaginationInteraction(route)];
   return [];
