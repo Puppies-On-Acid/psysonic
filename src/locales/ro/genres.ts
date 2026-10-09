@@ -7,6 +7,8 @@ export const genres = {
   empty: 'Niciun gen găsit.',
   albumsLoading: 'Se încarcă albume…',
   albumsEmpty: 'Niciun album găsit pentru acest gen.',
+  tracksEmpty: 'No tracks found for this genre.',
+  viewTabsLabel: 'Genre results',
   loadMore: 'Încarcă mai mult',
   back: 'Înapoi',
   playTooltip: 'Redă (ține apăsat pentru amestecare)',

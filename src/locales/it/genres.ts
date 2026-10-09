@@ -7,6 +7,8 @@ export const genres = {
   empty: 'Nessun genere trovato.',
   albumsLoading: 'Caricamento album…',
   albumsEmpty: 'Nessun album trovato per questo genere.',
+  tracksEmpty: 'No tracks found for this genre.',
+  viewTabsLabel: 'Genre results',
   loadMore: 'Carica altro',
   back: 'Indietro',
   playTooltip: 'Riproduci (Tieni premuto per riproduzione casuale)',

@@ -7,6 +7,8 @@ export const genres = {
   empty: 'ジャンルが見つかりません。',
   albumsLoading: 'アルバムを読み込み中…',
   albumsEmpty: 'このジャンルのアルバムは見つかりません。',
+  tracksEmpty: 'No tracks found for this genre.',
+  viewTabsLabel: 'Genre results',
   loadMore: 'さらに読み込む',
   back: '戻る',
   playTooltip: '再生 (長押しでシャッフル)',
