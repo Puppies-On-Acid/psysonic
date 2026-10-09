@@ -8,37 +8,40 @@ const {
   ndCreateSmartPlaylistMock,
   ndUpdateSmartPlaylistMock,
   ndGetSmartPlaylistMock,
-  getPlaylistForServerMock,
+  ndGetPlaylistTrackIdsMock,
   showToastMock,
   setPlaylistSongIdsMock,
+  playlistStoreSetStateMock,
 } = vi.hoisted(() => ({
   ndCreateSmartPlaylistMock: vi.fn(),
   ndUpdateSmartPlaylistMock: vi.fn(),
   ndGetSmartPlaylistMock: vi.fn(),
-  getPlaylistForServerMock: vi.fn(),
+  ndGetPlaylistTrackIdsMock: vi.fn(),
   showToastMock: vi.fn(),
   setPlaylistSongIdsMock: vi.fn(),
+  playlistStoreSetStateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/api/navidromeSmart', () => ({
   ndCreateSmartPlaylist: ndCreateSmartPlaylistMock,
   ndUpdateSmartPlaylist: ndUpdateSmartPlaylistMock,
   ndGetSmartPlaylist: ndGetSmartPlaylistMock,
+  ndGetPlaylistTrackIds: ndGetPlaylistTrackIdsMock,
 }));
 
 vi.mock('@/features/playlist/store/playlistStore', () => ({
   usePlaylistStore: {
     getState: () => ({ playlists: [] }),
-    setState: vi.fn(),
+    setState: playlistStoreSetStateMock,
   },
 }));
 
 vi.mock('@/store/playlistMembershipStore', () => ({
-  usePlaylistMembershipStore: { getState: () => ({ setPlaylistSongIds: setPlaylistSongIdsMock }) },
-}));
-
-vi.mock('@/lib/api/subsonicPlaylists', () => ({
-  getPlaylistForServer: getPlaylistForServerMock,
+  usePlaylistMembershipStore: {
+    getState: () => ({
+      setPlaylistSongIds: setPlaylistSongIdsMock,
+    }),
+  },
 }));
 
 vi.mock('@/lib/dom/toast', () => ({ showToast: showToastMock }));
@@ -72,14 +75,11 @@ describe('runPlaylistsSaveSmart', () => {
     ndCreateSmartPlaylistMock.mockReset();
     ndUpdateSmartPlaylistMock.mockReset();
     ndGetSmartPlaylistMock.mockReset();
-    getPlaylistForServerMock.mockReset();
+    ndGetPlaylistTrackIdsMock.mockReset().mockResolvedValue(['s1', 's2']);
     showToastMock.mockReset();
     setPlaylistSongIdsMock.mockReset();
+    playlistStoreSetStateMock.mockReset();
     ndGetSmartPlaylistMock.mockResolvedValue({ id: 'smart-1', rules: { all: [{ is: { genre: 'Jazz' } }] } });
-    getPlaylistForServerMock.mockResolvedValue({
-      playlist: { id: 'smart-1', name: 'Owned mix', songCount: 2 },
-      songs: [{ id: 's1' }, { id: 's2' }],
-    });
   });
 
   it('saves the exact entered name without a psy-smart- prefix', async () => {
@@ -102,10 +102,6 @@ describe('runPlaylistsSaveSmart', () => {
   it('creates without a prefix and without sync', async () => {
     ndCreateSmartPlaylistMock.mockResolvedValue({ id: 'new-1' });
     ndGetSmartPlaylistMock.mockResolvedValue({ id: 'new-1', rules: { all: [{ is: { genre: 'Jazz' } }] } });
-    getPlaylistForServerMock.mockResolvedValue({
-      playlist: { id: 'new-1', name: 'Owned mix', songCount: 1 },
-      songs: [{ id: 's1' }],
-    });
     const deps = makeDeps({ editingSmartId: null });
 
     await runPlaylistsSaveSmart(deps);
@@ -189,10 +185,6 @@ describe('runPlaylistsSaveSmart', () => {
       id: 'copy-1',
       rules: { all: [{ is: { genre: 'Jazz' } }] },
     });
-    getPlaylistForServerMock.mockResolvedValue({
-      playlist: { id: 'copy-1', name: 'Owned mix', songCount: 1 },
-      songs: [{ id: 's1' }],
-    });
 
     await runPlaylistsSaveSmart(makeDeps({ saveAsCopy: true }));
 
@@ -204,15 +196,53 @@ describe('runPlaylistsSaveSmart', () => {
     expect(ndUpdateSmartPlaylistMock).not.toHaveBeenCalled();
   });
 
-  it('reads the first page of tracks after save', async () => {
+  it('seeds membership from the native evaluated track set after save', async () => {
     ndCreateSmartPlaylistMock.mockResolvedValue({ id: 'new-1' });
     ndGetSmartPlaylistMock.mockResolvedValue({ id: 'new-1', rules: { all: [{ is: { genre: 'Jazz' } }] } });
     const deps = makeDeps({ editingSmartId: null });
 
     await runPlaylistsSaveSmart(deps);
 
-    expect(getPlaylistForServerMock).toHaveBeenCalledWith('server-b', 'new-1');
-    expect(setPlaylistSongIdsMock).toHaveBeenCalledWith('new-1', ['s1', 's2'], 'server-b');
+    expect(ndGetPlaylistTrackIdsMock).toHaveBeenCalledWith('new-1', 'server-b');
+    expect(setPlaylistSongIdsMock).toHaveBeenCalledWith(
+      'new-1',
+      ['s1', 's2'],
+      'server-b',
+    );
+  });
+
+  it('does not let a stale post-save native evaluation overwrite newer membership', async () => {
+    ndUpdateSmartPlaylistMock.mockResolvedValue({ id: 'smart-1' });
+    let resolveTracks!: (value: string[]) => void;
+    ndGetPlaylistTrackIdsMock.mockReturnValue(new Promise(resolve => {
+      resolveTracks = resolve;
+    }));
+    let current = true;
+    const deps = makeDeps({ isCurrent: () => current });
+
+    const save = runPlaylistsSaveSmart(deps);
+    await vi.waitFor(() => {
+      expect(ndGetPlaylistTrackIdsMock).toHaveBeenCalledWith('smart-1', 'server-b');
+    });
+
+    current = false;
+    resolveTracks(['old-song']);
+    await save;
+
+    expect(setPlaylistSongIdsMock).not.toHaveBeenCalled();
+    expect(playlistStoreSetStateMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves membership for pending reconciliation when native evaluation fails', async () => {
+    ndUpdateSmartPlaylistMock.mockResolvedValue({ id: 'smart-1' });
+    ndGetPlaylistTrackIdsMock.mockRejectedValueOnce(new Error('native tracks unavailable'));
+    const deps = makeDeps();
+
+    await runPlaylistsSaveSmart(deps);
+
+    expect(setPlaylistSongIdsMock).not.toHaveBeenCalled();
+    expect(deps.setPendingSmart).toHaveBeenCalled();
+    expect(deps.setCreatingSmart).toHaveBeenCalledWith(false);
   });
 
   it('does not close a newer editor when an older save completes', async () => {
