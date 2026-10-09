@@ -38,7 +38,7 @@ src/lib/media/songToTrack.ts
 src/features/playback/utils/playback/buildInfiniteQueueCandidates.ts
 
 # ── Phase B.1: pre-React bootstrap + window-kind detector (2026-05-12) ──
-src/app/windowKind.ts
+src/lib/windowKind.ts
 src/app/bootstrap.ts
 
 # ── Phase B.2: mini-player webview tree (2026-05-12) ─────────────────

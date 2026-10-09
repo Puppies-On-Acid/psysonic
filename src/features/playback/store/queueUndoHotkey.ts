@@ -1,4 +1,4 @@
-import { getWindowKind } from '@/app/windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import { usePlayerStore } from '@/features/playback/store/playerStore';
 
 const QUEUE_UNDO_HOTKEY_FLAG = '__psyQueueUndoListenerInstalled';
