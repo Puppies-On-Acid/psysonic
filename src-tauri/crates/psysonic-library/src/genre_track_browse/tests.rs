@@ -64,10 +64,11 @@ fn list_tracks_by_genre_is_case_insensitive_and_returns_only_matching_tracks() {
             track("t1", "Alpha", "lib1", &["Rock", "Progressive Rock"]),
             track("t2", "Bravo", "lib1", &["Rock"]),
             track("t3", "Charlie", "lib1", &["Jazz"]),
+            track("t4", "Delta", "lib1", &["Rockabilly"]),
         ])
         .unwrap();
 
-    let response = list_tracks_by_genre(&store, &request("rock")).unwrap();
+    let response = list_tracks_by_genre(&store, &request("  rock  ")).unwrap();
 
     assert_eq!(response.total, Some(2));
     assert_eq!(
@@ -106,6 +107,43 @@ fn list_tracks_by_genre_respects_library_scope() {
         .tracks
         .iter()
         .all(|track| track.library_id.as_deref() == Some("lib1")));
+}
+
+#[test]
+fn list_tracks_by_genre_merges_selected_servers() {
+    let store = LibraryStore::open_in_memory();
+    let first = track("t1", "Alpha", "lib1", &["Rock"]);
+    let mut second = track("t2", "Bravo", "lib2", &["Rock"]);
+    second.server_id = "s2".into();
+
+    TrackRepository::new(&store)
+        .upsert_batch(&[first, second])
+        .unwrap();
+
+    let mut req = request("Rock");
+    req.library_scopes = Some(vec![
+        LibraryScopePair {
+            server_id: "s1".into(),
+            library_id: None,
+        },
+        LibraryScopePair {
+            server_id: "s2".into(),
+            library_id: None,
+        },
+    ]);
+
+    let response = list_tracks_by_genre(&store, &req).unwrap();
+
+    assert_eq!(response.total, Some(2));
+    assert_eq!(response.tracks.len(), 2);
+    assert_eq!(
+        response
+            .tracks
+            .iter()
+            .map(|track| track.server_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["s1", "s2"])
+    );
 }
 
 #[test]
