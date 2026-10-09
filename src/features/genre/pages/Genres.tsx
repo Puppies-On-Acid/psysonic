@@ -19,8 +19,18 @@ import { useOfflineLocalBrowseReloadKey } from '@/store/localPlaybackBrowseRevis
 import { useLibrarySyncRevision } from '@/store/offlineLocalLibrarySyncRevision';
 import { useLocalPlaybackStore } from '@/store/localPlaybackStore';
 import { deriveLibraryBrowseIndexScopes } from '@/lib/library/libraryBrowseScope';
+import TagCatalogDiscoveryToolbar from '@/ui/TagCatalogDiscoveryToolbar';
+import {
+  consumeTagCatalogReturnState,
+  filterAndSortTagCatalog,
+  readTagCatalogSort,
+  storeTagCatalogReturnState,
+  writeTagCatalogSort,
+  type TagCatalogSort,
+} from '@/lib/library/tagCatalogDiscovery';
 
-const SCROLL_KEY = 'genres-scroll';
+const RETURN_STATE_KEY = 'genres-return-state';
+const SORT_KEY = 'genres-sort';
 const FONT_MIN_REM = 0.78;
 const FONT_MAX_REM = 1.7;
 
@@ -42,6 +52,9 @@ export default function Genres() {
   );
   const skipGenreCatalogCache = offlineBrowseActive
     && offlineLocalBrowseEnabled(serverId, localPlaybackEntries);
+  const [returnState] = useState(() => consumeTagCatalogReturnState(RETURN_STATE_KEY));
+  const [search, setSearch] = useState(returnState?.search ?? '');
+  const [sort, setSort] = useState<TagCatalogSort>(() => readTagCatalogSort(SORT_KEY));
   const cachedGenres = !offlineBrowseActive
     ? peekScopedGenreCatalog(selectedIndexScopes, true)
     : serverId && !skipGenreCatalogCache
@@ -94,33 +107,43 @@ export default function Genres() {
     offlineLocalBrowseReloadKey,
   ]);
 
-  const genres = useMemo(
-    () => filterGenresWithContent([...rawGenres]).sort((a, b) => b.albumCount - a.albumCount),
+  const catalogGenres = useMemo(
+    () => filterGenresWithContent([...rawGenres]),
     [rawGenres],
   );
+  const genres = useMemo(
+    () => filterAndSortTagCatalog(catalogGenres, search, sort),
+    [catalogGenres, search, sort],
+  );
 
-  // Log-scale font sizing — flattens the long tail (a 1000-album genre and a
-  // 50-album genre look distinct, but a 1-album genre still has a readable size).
+  // Keep pill size tied to library prevalence even when the visible order is
+  // alphabetical or a search narrows the cloud.
   const maxLog = useMemo(() => {
-    if (genres.length === 0) return 1;
-    return Math.log(Math.max(2, genres[0].albumCount));
-  }, [genres]);
+    const maxAlbumCount = catalogGenres.reduce(
+      (max, genre) => Math.max(max, genre.albumCount),
+      2,
+    );
+    return Math.log(maxAlbumCount);
+  }, [catalogGenres]);
 
   useEffect(() => {
-    if (loading || genres.length === 0) return;
-    const saved = sessionStorage.getItem(SCROLL_KEY);
-    if (!saved) return;
-    const pos = parseInt(saved, 10);
-    sessionStorage.removeItem(SCROLL_KEY);
+    writeTagCatalogSort(SORT_KEY, sort);
+  }, [sort]);
+
+  useEffect(() => {
+    if (loading || !returnState) return;
     requestAnimationFrame(() => {
       const el = document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID);
-      if (el) el.scrollTop = pos;
+      if (el) el.scrollTop = returnState.scrollTop;
     });
-  }, [loading, genres.length]);
+  }, [loading, returnState]);
 
   const handleGenreClick = (genreValue: string) => {
     const el = document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID);
-    if (el) sessionStorage.setItem(SCROLL_KEY, String(el.scrollTop));
+    storeTagCatalogReturnState(RETURN_STATE_KEY, {
+      search,
+      scrollTop: el?.scrollTop ?? 0,
+    });
     navigate(`/genres/${encodeURIComponent(genreValue)}`, { state: { returnTo: '/genres' } });
   };
 
@@ -128,16 +151,35 @@ export default function Genres() {
     <div className="content-body animate-fade-in">
       <div className="psy-page-heading psy-page-heading--spaced">
         <h1 className="page-title truncate" title={t('genres.title')}>{t('genres.title')}</h1>
-        {!loading && genres.length > 0 && (
+        {!loading && catalogGenres.length > 0 && (
           <span className="psy-page-heading__count">
             <span aria-hidden="true">–</span>
-            {genres.length} {t('genres.genreCount')}
+            {search.trim()
+              ? t('genres.filteredCount', { visible: genres.length, total: catalogGenres.length })
+              : `${catalogGenres.length} ${t('genres.genreCount')}`}
           </span>
         )}
       </div>
 
+      {!loading && catalogGenres.length > 0 && (
+        <TagCatalogDiscoveryToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={t('genres.searchPlaceholder')}
+          clearSearchLabel={t('genres.clearSearch')}
+          sort={sort}
+          onSortChange={setSort}
+          popularityLabel={t('genres.sortPopularity')}
+          alphabeticalLabel={t('genres.sortAlphabetical')}
+          sortTooltip={t('genres.sortTooltip')}
+        />
+      )}
+
       {loading && <p className="loading-text">{t('genres.loading')}</p>}
-      {!loading && genres.length === 0 && <p className="loading-text">{t('genres.empty')}</p>}
+      {!loading && catalogGenres.length === 0 && <p className="loading-text">{t('genres.empty')}</p>}
+      {!loading && catalogGenres.length > 0 && genres.length === 0 && (
+        <p className="loading-text">{t('genres.noSearchResults', { query: search.trim() })}</p>
+      )}
 
       {!loading && genres.length > 0 && (
         <div className="genre-cloud">

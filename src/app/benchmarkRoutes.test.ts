@@ -16,6 +16,8 @@ describe('benchmark routes', () => {
       '/search',
       '/search/advanced',
       '/player-stats',
+      '/genres',
+      '/moods',
       '/now-playing',
       '/device-sync',
       '/shared',

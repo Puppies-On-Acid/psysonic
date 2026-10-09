@@ -6,6 +6,13 @@ export const moods = {
   albumCount_other: '{{count}} albums',
   loading: 'Loading moods…',
   empty: 'No moods found.',
+  searchPlaceholder: 'Search moods…',
+  clearSearch: 'Clear mood search',
+  sortPopularity: 'Popularity',
+  sortAlphabetical: 'Alphabetical',
+  sortTooltip: 'Sort moods',
+  filteredCount: '{{visible}} of {{total}} moods',
+  noSearchResults: 'No moods match “{{query}}”.',
   albumsEmpty: 'No albums found for this mood.',
   back: 'Back',
 };
