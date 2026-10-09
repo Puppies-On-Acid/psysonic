@@ -15,3 +15,5 @@ export { default as NavidromePublicShareModal } from './components/NavidromePubl
 export { useLiveSearchRouteScope } from './hooks/useLiveSearchRouteScope';
 export { useShareQueuePreview } from './hooks/useShareQueuePreview';
 export { useNavidromePublicSharePreview } from './hooks/useNavidromePublicSharePreview';
+
+export { default as PagedSongList } from './components/PagedSongList';
