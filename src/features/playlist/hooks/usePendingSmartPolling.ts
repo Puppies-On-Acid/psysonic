@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type React from 'react';
 import { getPlaylistForServer } from '@/lib/api/subsonicPlaylists';
-import { usePlaylistStore } from '@/features/playlist';
-import type { PendingSmartPlaylist } from '@/features/playlist';
+import { usePlaylistStore } from '@/features/playlist/store/playlistStore';
+import type { PendingSmartPlaylist } from '@/features/playlist/utils/playlistsSmart';
+import { usePlaylistMembershipStore } from '@/store/playlistMembershipStore';
 import { ownedEntityKey } from '@/lib/util/ownedEntityKey';
 
 /**
@@ -19,7 +20,6 @@ import { ownedEntityKey } from '@/lib/util/ownedEntityKey';
 export function usePendingSmartPolling(
   pendingSmart: PendingSmartPlaylist[],
   setPendingSmart: React.Dispatch<React.SetStateAction<PendingSmartPlaylist[]>>,
-  fetchPlaylists: () => Promise<void>,
 ): void {
   const pollingGenerationRef = useRef(0);
   useEffect(() => {
@@ -30,7 +30,17 @@ export function usePendingSmartPolling(
       if (inFlight) return;
       inFlight = true;
       try {
-        await fetchPlaylists();
+        const ownerServerIds = [...new Set(
+          pendingSmart.map(item => item.serverId).filter(Boolean),
+        )];
+        await Promise.all(ownerServerIds.map(serverId =>
+          usePlaylistStore
+            .getState()
+            .fetchPlaylistsForServer(
+              serverId,
+              () => pollingGenerationRef.current === generation,
+            )
+        ));
         if (pollingGenerationRef.current !== generation) return;
         const listNow = usePlaylistStore.getState().playlists;
         const hydrated = pendingSmart.map(item => {
@@ -42,8 +52,11 @@ export function usePendingSmartPolling(
         const details = await Promise.all(
           hydrated.filter(item => item.id).map(async (item) => {
             try {
-              const { playlist } = await getPlaylistForServer(item.serverId, item.id!);
-              return { ...playlist, serverId: item.serverId };
+              const { playlist, songs } = await getPlaylistForServer(item.serverId, item.id!);
+              return {
+                playlist: { ...playlist, serverId: item.serverId },
+                songIds: songs.map(song => song.id),
+              };
             } catch {
               return null;
             }
@@ -53,50 +66,68 @@ export function usePendingSmartPolling(
         const freshById = new Map(
           details
             .filter((p): p is NonNullable<typeof p> => p !== null)
-            .map(p => [ownedEntityKey(p), p]),
+            .map(detail => [ownedEntityKey(detail.playlist), detail]),
         );
         if (freshById.size > 0) {
           usePlaylistStore.setState((s) => ({
             playlists: s.playlists.map((p) => {
               const fresh = freshById.get(ownedEntityKey(p));
-              return fresh ? { ...p, ...fresh } : p;
+              return fresh ? { ...p, ...fresh.playlist } : p;
             }),
           }));
         }
         const current = usePlaylistStore.getState().playlists;
-        setPendingSmart(() => {
-          const next: PendingSmartPlaylist[] = [];
-          for (const item of hydrated) {
-            const pl = item.id
-              ? current.find(p => p.serverId === item.serverId && p.id === item.id)
-              : current.find(p => p.serverId === item.serverId && p.name === item.name);
-            if (!pl) {
-              next.push({ ...item, attempts: item.attempts + 1 });
-              continue;
-            }
-            const songCount = pl.songCount ?? 0;
-            const currentCover = pl.coverArt;
-            const firstCover = item.firstSeenCoverArt ?? currentCover;
-            const placeholderStillThere = Boolean(firstCover) && currentCover === firstCover;
-            // Wait until we see actual content and cover changed from the first placeholder-ish cover.
-            // Fallback timeout keeps UI from waiting forever on servers that never update cover id.
-            const hardTimeoutReached = item.attempts >= 18; // ~3 minutes (18 * 10s)
-            const emptySettled = songCount === 0 && item.attempts >= 3; // ~30s — valid empty result
-            const ready =
-              hardTimeoutReached
-              || emptySettled
-              || (songCount > 0 && (!placeholderStillThere || hardTimeoutReached));
-            if (!ready) {
-              next.push({
-                ...item,
-                id: pl.id,
-                firstSeenCoverArt: firstCover,
-                attempts: item.attempts + 1,
-              });
+        const membership = usePlaylistMembershipStore.getState();
+        const next: PendingSmartPlaylist[] = [];
+
+        for (const item of hydrated) {
+          const pl = item.id
+            ? current.find(p => p.serverId === item.serverId && p.id === item.id)
+            : current.find(p => p.serverId === item.serverId && p.name === item.name);
+          if (!pl) {
+            next.push({ ...item, attempts: item.attempts + 1 });
+            continue;
+          }
+          const songCount = pl.songCount ?? 0;
+          const currentCover = pl.coverArt;
+          const firstCover = item.firstSeenCoverArt ?? currentCover;
+          const placeholderStillThere = Boolean(firstCover) && currentCover === firstCover;
+          // Wait until we see actual content and cover changed from the first placeholder-ish cover.
+          // Fallback timeout keeps UI from waiting forever on servers that never update cover id.
+          const hardTimeoutReached = item.attempts >= 18; // ~3 minutes (18 * 10s)
+          const emptySettled = songCount === 0 && item.attempts >= 3; // ~30s — valid empty result
+          const ready =
+            hardTimeoutReached
+            || emptySettled
+            || (songCount > 0 && (!placeholderStillThere || hardTimeoutReached));
+
+          if (ready && item.id) {
+            const fresh = freshById.get(
+              ownedEntityKey({ id: item.id, serverId: item.serverId }),
+            );
+            if (
+              fresh
+              && membership.getPlaylistSongIds(item.id, item.serverId) === undefined
+            ) {
+              membership.setPlaylistSongIds(
+                item.id,
+                fresh.songIds,
+                item.serverId,
+              );
             }
           }
-          return next;
-        });
+
+          if (!ready) {
+            next.push({
+              ...item,
+              id: pl.id,
+              firstSeenCoverArt: firstCover,
+              attempts: item.attempts + 1,
+            });
+          }
+        }
+
+        setPendingSmart(next);
       } finally {
         inFlight = false;
       }
@@ -105,5 +136,5 @@ export function usePendingSmartPolling(
       pollingGenerationRef.current += 1;
       window.clearInterval(interval);
     };
-  }, [pendingSmart, fetchPlaylists, setPendingSmart]);
+  }, [pendingSmart, setPendingSmart]);
 }

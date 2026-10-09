@@ -866,3 +866,98 @@ html[data-track-previews-randommix="off"]   [data-preview-loc="randomMix"]   .pl
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
 }
+
+
+/* ── Track playlist membership ────────────────────────────────────────────── */
+.track-playlists-cell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.track-playlist-link {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.track-playlist-link:hover,
+.track-playlist-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.track-playlist-more {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.track-playlist-more:hover,
+.track-playlist-more:focus-visible {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-subtle));
+}
+
+.track-playlist-state,
+.track-playlist-partial {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.track-playlist-popover {
+  width: max-content;
+  min-width: min(160px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(320px, calc(100vh - 16px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.track-playlist-popover-item {
+  display: block;
+  width: 100%;
+  max-width: calc(100vw - 28px);
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.track-playlist-popover-item:hover,
+.track-playlist-popover-item:focus-visible {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
