@@ -481,6 +481,24 @@ export type LibraryGenreAlbumsResponse = {
   source: 'local';
 };
 
+export type LibraryGenreTracksRequest = {
+  serverId: string;
+  genre: string;
+  libraryScope?: string | null;
+  libraryScopes?: LibraryScopePair[];
+  limit?: number;
+  offset?: number;
+  includeTotal?: boolean;
+  countOnly?: boolean;
+};
+
+export type LibraryGenreTracksResponse = {
+  tracks: LibraryTrackDto[];
+  hasMore: boolean;
+  total?: number | null;
+  source: 'local';
+};
+
 export type LibraryMoodAlbumsRequest = {
   serverId: string;
   mood: string;
