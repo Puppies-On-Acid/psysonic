@@ -175,6 +175,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **Blur explicit covers** hides the cover art of those songs behind a soft blur; clicking an album cover still shows it in full. It is off by default; both options are in **Settings → Appearance → Visual Options**.
 * Works with servers that report explicit tags through OpenSubsonic, such as Navidrome.
 
+### Greek translation
+
+**By [@stefnto](https://github.com/stefnto), PR [#1737](https://github.com/Psysonic/psysonic/pull/1737)**
+
+* Full Greek (Ελληνικά) UI translation — selectable from the language picker on the Settings and Login screens.
+* Library matching now ignores Greek accents (tonos, dialytika) and the final sigma, so `Μάνος`, `Μανος` and `ΜΑΝΟΣ` resolve to the same entry. The first sync after the update rebuilds the library keys once.
+
+### Open Settings with a keyboard shortcut
+
+**By [@enncoded](https://github.com/enncoded), PR [#1734](https://github.com/Psysonic/psysonic/pull/1734)**
+
+* ⌘, on macOS and Ctrl+, on Windows and Linux open Settings from any view. The shortcut can be changed or cleared under **Settings → Input → Keyboard shortcuts**.
+* If one of your shortcuts already uses that key combination, it keeps it, and **Open settings** starts unassigned.
+
+### Settings search finds every option
+
+**By [@Psychotoxical](https://github.com/Psychotoxical), reported by Fetta on Discord, PR [#1747](https://github.com/Psysonic/psysonic/pull/1747)**
+
+* The search in Settings now looks through every option, its choices and hints, not only the section names. For example, `sharing` or `downloads` lead to **Integrations → Navidrome → Navidrome sharing**.
+* Each result names the option that matched; selecting it opens the section and highlights that option.
+* Small typos are forgiven, and English terms work in every UI language.
+* Sections that only appear in Advanced Mode, and the Users tab, show up in the results only when they are available.
+
 ## Fixed
 
 ### The AppImage starts on Fedora 44 again
@@ -344,6 +367,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * With **Settings → Integrations → Navidrome → Play queue sync** turned off, Psysonic could bring back an older queue after a restart instead of the one you left. The queue and the current track now come back as you left them.
 * Root cause: the startup check still adopted the server queue, which is no longer updated while sync is off, and the mini player window saved its own outdated copy of the queue over the one from the main window.
+
+### A new artist image shows up right after uploading it
+
+**By [@Psychotoxical](https://github.com/Psychotoxical), reported by roman-redl on GitHub, PR [#1740](https://github.com/Psysonic/psysonic/pull/1740)**
+
+* After uploading an image with the camera button on an artist page, the round picture, the header background and the picture under **About the artist** kept showing the previous image. All three now switch to the new image right away, also when you upload again.
+* Root cause: the upload did not clear the saved copies of the artist's picture, and with Navidrome the round picture loaded an address that stays the same after an upload, so the old image was shown again.
+
+### Servers connect again when a system proxy is set
+
+**By [@Psychotoxical](https://github.com/Psychotoxical), reported by noaccou on GitHub, PR [#1749](https://github.com/Psysonic/psysonic/pull/1749)**
+
+* With an HTTP or HTTPS proxy set in the system network settings, the library sync, covers and streaming sent their requests through that proxy — on macOS also for servers listed under **Bypass proxy settings for these Hosts & Domains** — and failed with "no bound session" or "error sending request". Psysonic no longer uses the system proxy settings, as up to 1.53.
+* Root cause: a dependency update in 1.54.0 made the app read the system proxy settings, but on macOS without the list of hosts to bypass.
 
 ## [1.55.0]
 

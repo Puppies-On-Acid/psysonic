@@ -495,6 +495,7 @@ const CONTRIBUTOR_ENTRIES = [
       'Lyrics — show server-provided translations under the lyrics (PR #1721)',
       'Playlists — tags with filter chips on the Playlists page (PR #1730)',
       'Tracks — explicit badges and optional cover blur (PR #1731)',
+      'Settings — full-text search across every option, typo-tolerant (PR #1747)',
     ],
   },
   {
@@ -571,6 +572,7 @@ const CONTRIBUTOR_ENTRIES = [
     contributions: [
       'Clickable artist credits in the fullscreen, mini and mobile players (PR #1371)',
       'Configurable album cover source chain with a Last.fm provider (PR #1502)',
+      'Keyboard shortcut that opens Settings (PR #1734)',
     ],
   },
   {
@@ -649,6 +651,13 @@ const CONTRIBUTOR_ENTRIES = [
     since: '1.56.0',
     contributions: [
       'AppImage launches against the system WebKitGTK when one is installed (PR #1348)',
+    ],
+  },
+  {
+    github: 'stefnto',
+    since: '1.56.0',
+    contributions: [
+      'Greek translation (PR #1737)',
     ],
   },
 ] as const;
