@@ -13,6 +13,11 @@ import { useAuthStore } from '@/store/authStore';
 import { useLibrarySyncRevision } from '@/store/offlineLocalLibrarySyncRevision';
 import TagCatalogDiscoveryToolbar from '@/ui/TagCatalogDiscoveryToolbar';
 import {
+  TagExplorerSelectionBar,
+  tagExplorerTagKey,
+  useTagExplorerSelectionStore,
+} from '@/features/tagExplorer';
+import {
   consumeTagCatalogReturnState,
   filterAndSortTagCatalog,
   readTagCatalogSort,
@@ -60,6 +65,14 @@ function mergeMoodCatalogs(
 export default function Moods() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const selectionActive = useTagExplorerSelectionStore(s => s.active);
+  const selectionOrigin = useTagExplorerSelectionStore(s => s.origin);
+  const selectedTags = useTagExplorerSelectionStore(s => s.tags);
+  const beginSelection = useTagExplorerSelectionStore(s => s.begin);
+  const toggleSelection = useTagExplorerSelectionStore(s => s.toggle);
+  const removeSelection = useTagExplorerSelectionStore(s => s.remove);
+  const clearSelection = useTagExplorerSelectionStore(s => s.clear);
+  const cancelSelection = useTagExplorerSelectionStore(s => s.cancel);
 
   const musicLibraryFilterVersion = useAuthStore(
     s => s.musicLibraryFilterVersion,
@@ -163,6 +176,10 @@ export default function Moods() {
   }, [loading, returnState]);
 
   const handleMoodClick = (moodValue: string) => {
+    if (selectionActive) {
+      toggleSelection({ kind: 'mood', value: moodValue });
+      return;
+    }
     const el = document.getElementById(
       APP_MAIN_SCROLL_VIEWPORT_ID,
     );
@@ -183,7 +200,11 @@ export default function Moods() {
   };
 
   return (
-    <div className="content-body animate-fade-in">
+    <div
+      className="content-body animate-fade-in"
+      data-benchmark-tag-catalog="moods"
+      data-benchmark-result-count={moods.length}
+    >
       <div className="psy-page-heading psy-page-heading--spaced">
         <h1
           className="page-title truncate"
@@ -214,6 +235,31 @@ export default function Moods() {
           popularityLabel={t('moods.sortPopularity')}
           alphabeticalLabel={t('moods.sortAlphabetical')}
           sortTooltip={t('moods.sortTooltip')}
+          benchmarkKind="moods"
+          selectionMode={selectionActive}
+          onToggleSelectionMode={() => {
+            if (selectionActive) cancelSelection();
+            else beginSelection('moods');
+          }}
+          selectLabel={t('moods.selectTags')}
+          cancelSelectionLabel={t('moods.cancelSelection')}
+        />
+      )}
+
+      {selectionActive && (
+        <TagExplorerSelectionBar
+          origin={selectionOrigin ?? 'moods'}
+          tags={selectedTags}
+          onRemove={removeSelection}
+          onClear={clearSelection}
+          onCancel={cancelSelection}
+          selectedCountLabel={t('moods.selectedTagCount', { count: selectedTags.length })}
+          clearLabel={t('moods.clearSelection')}
+          cancelLabel={t('moods.cancelSelection')}
+          viewResultsLabel={t('moods.viewResults')}
+          minimumLabel={t('moods.selectionMinimum')}
+          genreLabel={t('moods.genreTagLabel')}
+          moodLabel={t('moods.moodTagLabel')}
         />
       )}
 
@@ -254,7 +300,14 @@ export default function Moods() {
               <button
                 key={mood.value}
                 type="button"
-                className="genre-pill"
+                className={`genre-pill${selectionActive && selectedTags.some(
+                  tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'mood', value: mood.value }),
+                ) ? ' genre-pill--selected' : ''}`}
+                aria-pressed={selectionActive
+                  ? selectedTags.some(
+                      tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'mood', value: mood.value }),
+                    )
+                  : undefined}
                 style={
                   {
                     '--genre-color': color,

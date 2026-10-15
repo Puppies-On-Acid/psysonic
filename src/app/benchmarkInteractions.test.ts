@@ -6,6 +6,11 @@ describe('routeSupportsScrollPagination', () => {
     expect(routeSupportsScrollPagination('/albums')).toBe(true);
     expect(routeSupportsScrollPagination('/search/advanced')).toBe(true);
     expect(routeSupportsScrollPagination('/genres/Rock%20%26%20Roll')).toBe(true);
+    expect(
+      routeSupportsScrollPagination(
+        '/genres/explore/results?tag=genre%3ARock&tag=mood%3ADreamy',
+      ),
+    ).toBe(false);
   });
 
   it('does not treat button-based or fixed-size pages as scroll pagination', () => {
