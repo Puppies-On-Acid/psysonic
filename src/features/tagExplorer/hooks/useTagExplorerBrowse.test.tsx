@@ -68,7 +68,7 @@ describe('useTagExplorerBrowse', () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ activeView }) =>
+      ({ activeView }: { activeView: 'albums' | 'tracks' }) =>
         useTagExplorerBrowse(
           's1',
           tags,
@@ -138,7 +138,7 @@ describe('useTagExplorerBrowse', () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ activeView }) =>
+      ({ activeView }: { activeView: 'albums' | 'tracks' }) =>
         useTagExplorerBrowse(
           's1',
           [
