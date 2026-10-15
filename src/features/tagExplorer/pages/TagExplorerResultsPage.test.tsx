@@ -203,7 +203,7 @@ describe('TagExplorerResultsPage', () => {
       TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
     );
 
-    const toolbar = document.querySelector(
+    const toolbar = document.querySelector<HTMLElement>(
       '.tag-explorer-results > .mainstage-inpage-toolbar',
     );
     expect(toolbar).not.toBeNull();
@@ -234,7 +234,7 @@ describe('TagExplorerResultsPage', () => {
     }));
     renderPage('?tag=genre%3ARock&tag=mood%3ADreamy&view=tracks');
 
-    const toolbar = document.querySelector(
+    const toolbar = document.querySelector<HTMLElement>(
       '.tag-explorer-results > .mainstage-inpage-toolbar',
     );
     expect(toolbar).toContainElement(
