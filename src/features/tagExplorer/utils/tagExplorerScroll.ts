@@ -1,6 +1,8 @@
 export interface TagExplorerScrollState {
   albums: number;
   tracks: number;
+  albumDisplayCount: number;
+  trackDisplayCount: number;
 }
 
 const PREFIX = 'tag-explorer-scroll:';
@@ -17,7 +19,7 @@ export function readTagExplorerScroll(
 ): TagExplorerScrollState {
   try {
     const raw = sessionStorage.getItem(key(pathname, search));
-    if (!raw) return { albums: 0, tracks: 0 };
+    if (!raw) return { albums: 0, tracks: 0, albumDisplayCount: 0, trackDisplayCount: 0 };
     const parsed = JSON.parse(raw) as Partial<TagExplorerScrollState>;
     return {
       albums: typeof parsed.albums === 'number' && Number.isFinite(parsed.albums)
@@ -26,9 +28,15 @@ export function readTagExplorerScroll(
       tracks: typeof parsed.tracks === 'number' && Number.isFinite(parsed.tracks)
         ? Math.max(0, parsed.tracks)
         : 0,
+      albumDisplayCount: typeof parsed.albumDisplayCount === 'number' && Number.isFinite(parsed.albumDisplayCount)
+        ? Math.max(0, Math.floor(parsed.albumDisplayCount))
+        : 0,
+      trackDisplayCount: typeof parsed.trackDisplayCount === 'number' && Number.isFinite(parsed.trackDisplayCount)
+        ? Math.max(0, Math.floor(parsed.trackDisplayCount))
+        : 0,
     };
   } catch {
-    return { albums: 0, tracks: 0 };
+    return { albums: 0, tracks: 0, albumDisplayCount: 0, trackDisplayCount: 0 };
   }
 }
 
@@ -42,6 +50,8 @@ export function writeTagExplorerScroll(
     JSON.stringify({
       albums: Math.max(0, state.albums),
       tracks: Math.max(0, state.tracks),
+      albumDisplayCount: Math.max(0, Math.floor(state.albumDisplayCount)),
+      trackDisplayCount: Math.max(0, Math.floor(state.trackDisplayCount)),
     }),
   );
 }
