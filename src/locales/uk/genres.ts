@@ -9,6 +9,8 @@ export const genres = {
   empty: 'Жанрів не знайдено.',
   albumsLoading: 'Завантаження альбомів…',
   albumsEmpty: 'Для цього жанру альбомів не знайдено.',
+  tracksEmpty: 'No tracks found for this genre.',
+  viewTabsLabel: 'Genre results',
   loadMore: 'Завантажити ще',
   back: 'Назад',
   playTooltip: 'Грати (утримуйте для перемішування)',
