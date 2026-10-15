@@ -153,7 +153,10 @@ export default function TagExplorerResultsPage() {
       : tracksReady || trackError !== null,
     loading: state.view === 'albums' ? albumsLoading : tracksLoading,
     loadingMore: state.view === 'albums' ? albumsLoadingMore : tracksLoadingMore,
-    hasMore: state.view === 'albums' ? albumHasMore : trackHasMore,
+    // Avoid a retry loop if loading another page fails during restoration.
+    hasMore: state.view === 'albums'
+      ? albumHasMore && albumError === null
+      : trackHasMore && trackError === null,
     loadMore: state.view === 'albums' ? loadMoreAlbums : loadMoreTracks,
   });
 
