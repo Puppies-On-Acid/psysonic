@@ -10,6 +10,7 @@ export const LOSSLESS_ALBUMS_INPAGE_SCROLL_VIEWPORT_ID = 'lossless-albums-inpage
 export const COMPOSERS_INPAGE_SCROLL_VIEWPORT_ID = 'composers-inpage-scroll-viewport';
 export const GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID = 'genre-detail-inpage-scroll-viewport';
 export const MOOD_DETAIL_INPAGE_SCROLL_VIEWPORT_ID = 'mood-detail-inpage-scroll-viewport';
+export const TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID = 'tag-explorer-inpage-scroll-viewport';
 export const BURNER_INPAGE_SCROLL_VIEWPORT_ID = 'burner-inpage-scroll-viewport';
 
 export type AlbumGridInpageScrollSurface = 'albums' | 'new-releases' | 'random-albums';
@@ -45,6 +46,7 @@ export function readInpageScrollTop(viewportId: string): number {
 /** Resolve in-page viewport id for the current route pathname. */
 export function mainRouteInpageScrollViewportId(pathname: string): string | undefined {
   const path = pathname.split('?')[0]?.replace(/\/$/, '') || pathname;
+  if (/^\/(?:genres|moods)\/explore\/results$/.test(path)) return TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID;
   if (/^\/genres\/[^/]+$/.test(path)) return GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID;
   if (/^\/moods\/[^/]+$/.test(path)) return MOOD_DETAIL_INPAGE_SCROLL_VIEWPORT_ID;
   return MAIN_ROUTE_INPAGE_SCROLL_VIEWPORT_ID_BY_PATH[path];
