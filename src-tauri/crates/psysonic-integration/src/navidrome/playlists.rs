@@ -180,8 +180,18 @@ pub async fn nd_get_playlist_tracks(
     id: String,
     start: Option<u32>,
     end: Option<u32>,
+    media_file_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    get_playlist_tracks(http_registry.as_ref(), &server_url, &token, &id, start, end).await
+    get_playlist_tracks(
+        http_registry.as_ref(),
+        &server_url,
+        &token,
+        &id,
+        start,
+        end,
+        media_file_id.as_deref(),
+    )
+    .await
 }
 
 async fn get_playlist_tracks(
@@ -191,11 +201,53 @@ async fn get_playlist_tracks(
     id: &str,
     start: Option<u32>,
     end: Option<u32>,
+    media_file_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let url = format!("{}/api/playlist/{}/tracks", server_url, id);
     let auth = format!("Bearer {}", token);
     let start = start.unwrap_or(0);
     let end = end.unwrap_or(50);
+    let media_file_id = media_file_id.map(str::to_string);
+    let resp = nd_retry(|| {
+        let url = url.clone();
+        let auth = auth.clone();
+        let media_file_id = media_file_id.clone();
+        async move {
+            nd_apply_request(Some(reg), None, &url, {
+                let request = nd_http_client()
+                    .get(&url)
+                    .header("X-ND-Authorization", auth)
+                    .query(&[("_start", start), ("_end", end)]);
+                match media_file_id.as_deref() {
+                    Some(media_file_id) => request.query(&[("media_file_id", media_file_id)]),
+                    None => request,
+                }
+            })
+            .send()
+            .await
+        }
+    })
+    .await?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("HTTP {}: {}", status, text));
+    }
+    Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+}
+
+/// GET `/api/song/{id}/playlists` — playlists containing one media file.
+// NOT specta-collected: serde_json::Value in the command signature — specta rc.25 can't export it. Stays hand-written on generate_handler!.
+#[tauri::command]
+pub async fn nd_get_song_playlists(
+    http_registry: State<'_, Arc<ServerHttpRegistry>>,
+    server_url: String,
+    token: String,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let reg = http_registry.as_ref();
+    let url = format!("{}/api/song/{}/playlists", server_url, id);
+    let auth = format!("Bearer {}", token);
     let resp = nd_retry(|| {
         let url = url.clone();
         let auth = auth.clone();
@@ -206,8 +258,7 @@ async fn get_playlist_tracks(
                 &url,
                 nd_http_client()
                     .get(&url)
-                    .header("X-ND-Authorization", auth)
-                    .query(&[("_start", start), ("_end", end)]),
+                    .header("X-ND-Authorization", auth),
             )
             .send()
             .await
@@ -250,7 +301,7 @@ async fn preview_playlist(
     if id.is_empty() {
         return Err("Preview playlist was created without an id".into());
     }
-    let tracks = get_playlist_tracks(reg, server_url, token, &id, Some(0), Some(50)).await;
+    let tracks = get_playlist_tracks(reg, server_url, token, &id, Some(0), Some(50), None).await;
     let cleanup = delete_playlist(reg, server_url, token, &id).await;
     match (tracks, cleanup) {
         (Ok(tracks), Ok(())) => Ok(tracks),

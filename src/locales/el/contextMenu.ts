@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'Αφαίρεση από την ουρά',
   removeFromPlaylist: 'Αφαίρεση από τη λίστα αναπαραγωγής',
   openAlbum: 'Προβολή Άλμπουμ',
+  openPlaylist: 'Άνοιγμα λίστας αναπαραγωγής',
   goToArtist: 'Προβολή Καλλιτέχνη',
   download: 'Λήψη (ZIP)',
   addToPlaylist: 'Προσθήκη σε λίστα αναπαραγωγής',

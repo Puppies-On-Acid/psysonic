@@ -15,6 +15,7 @@ export const ARTIST_ALL_TRACKS_COLUMNS: readonly ColDef[] = [
   { key: 'num',        i18nKey: null,              minWidth: 60,  defaultWidth: 60,  required: true  },
   { key: 'title',      i18nKey: 'trackTitle',      ...TRACK_TITLE_FLEX_COL, required: true },
   { key: 'album',      i18nKey: 'trackAlbum',      minWidth: 80,  defaultWidth: 200, required: true  },
+  { key: 'playlists',  i18nKey: 'trackPlaylists',  minWidth: 100, defaultWidth: 180, required: false, defaultHidden: true },
   { key: 'duration',   i18nKey: 'trackDuration',   minWidth: 72,  defaultWidth: 92,  required: false },
   // Off by default — on an artist page the performer repeats down the whole
   // column, and it only says something on compilations and guest spots.
@@ -32,7 +33,7 @@ export const ARTIST_ALL_TRACKS_COLUMNS: readonly ColDef[] = [
 ];
 
 export type ArtistAllTracksColKey =
-  | 'num' | 'title' | 'album' | 'artist' | 'duration'
+  | 'num' | 'title' | 'album' | 'artist' | 'playlists' | 'duration'
   | 'format' | 'genre' | 'genres' | 'mood' | 'year' | 'playCount' | 'lastPlayed' | 'bpm';
 
 /** Columns whose content is centred rather than left-aligned, as elsewhere. */
