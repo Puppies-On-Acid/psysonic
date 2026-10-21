@@ -775,8 +775,10 @@ pub async fn library_list_tracks_by_genre(
 ) -> Result<crate::dto::LibraryGenreTracksResponse, String> {
     let store = Arc::clone(&runtime.store);
 
-    library_spawn_blocking(move || crate::genre_track_browse::list_tracks_by_genre(&store, &request))
-        .await
+    library_spawn_blocking(move || {
+        crate::genre_track_browse::list_tracks_by_genre(&store, &request)
+    })
+    .await
 }
 
 // NOT specta-collected: response contains LibraryAlbumDto.raw_json (serde_json::Value).
@@ -801,6 +803,7 @@ pub async fn library_tag_explorer_tracks(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn library_tag_explorer_track_refs(
     runtime: State<'_, LibraryRuntime>,
     request: crate::dto::LibraryTagExplorerTrackRefsRequest,

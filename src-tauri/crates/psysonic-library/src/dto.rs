@@ -557,21 +557,21 @@ pub struct LibraryGenreTracksResponse {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum LibraryTagKind {
     Genre,
     Mood,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryTagFilter {
     pub kind: LibraryTagKind,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum LibraryTagMatchMode {
     #[default]
@@ -647,7 +647,7 @@ pub struct LibraryTagExplorerTracksResponse {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryTagExplorerTrackRefsRequest {
     pub server_id: String,
@@ -668,14 +668,14 @@ fn default_tag_explorer_ref_limit() -> u32 {
     500
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryTagExplorerTrackRefDto {
     pub server_id: String,
     pub track_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryTagExplorerTrackRefsResponse {
     pub tracks: Vec<LibraryTagExplorerTrackRefDto>,

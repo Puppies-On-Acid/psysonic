@@ -222,9 +222,10 @@ pub fn list_tracks(
         page_limit.saturating_add(1)
     };
 
-    let (mut tracks, matching_total) =
-        if scoped_layer1_eligible(&scopes) && !multi_library_merge_enabled(&scopes) {
-            scope_merge::list_tracks_layer1_filtered(
+    let (mut tracks, matching_total) = if scoped_layer1_eligible(&scopes)
+        && !multi_library_merge_enabled(&scopes)
+    {
+        scope_merge::list_tracks_layer1_filtered(
                 store,
                 &scopes,
                 &where_sql,
@@ -236,8 +237,8 @@ pub fn list_tracks(
                 false,
                 false,
             )?
-        } else {
-            scope_merge::list_tracks_filtered(
+    } else {
+        scope_merge::list_tracks_filtered(
                 store,
                 &scopes,
                 &where_sql,
@@ -249,7 +250,7 @@ pub fn list_tracks(
                 false,
                 false,
             )?
-        };
+    };
 
     let total = req.include_total.then_some(matching_total);
     if req.count_only {
@@ -288,9 +289,10 @@ pub fn list_track_refs(
     let page_limit = req.limit.clamp(1, TRACK_REF_PAGE_MAX);
     let query_limit = page_limit.saturating_add(1);
 
-    let (mut tracks, _) =
-        if scoped_layer1_eligible(&scopes) && !multi_library_merge_enabled(&scopes) {
-            scope_merge::list_tracks_layer1_filtered(
+    let (mut tracks, _) = if scoped_layer1_eligible(&scopes)
+        && !multi_library_merge_enabled(&scopes)
+    {
+        scope_merge::list_tracks_layer1_filtered(
                 store,
                 &scopes,
                 &where_sql,
@@ -302,8 +304,8 @@ pub fn list_track_refs(
                 false,
                 false,
             )?
-        } else {
-            scope_merge::list_tracks_filtered(
+    } else {
+        scope_merge::list_tracks_filtered(
                 store,
                 &scopes,
                 &where_sql,
@@ -315,7 +317,7 @@ pub fn list_track_refs(
                 false,
                 false,
             )?
-        };
+    };
 
     let has_more = tracks.len() > page_limit as usize;
     tracks.truncate(page_limit as usize);
