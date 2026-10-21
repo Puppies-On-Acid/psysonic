@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react';
+import { ListChecks, Search, X } from 'lucide-react';
 
 import type { TagCatalogSort } from '@/lib/library/tagCatalogDiscovery';
 import SortDropdown from '@/ui/SortDropdown';
@@ -13,6 +13,11 @@ interface Props {
   popularityLabel: string;
   alphabeticalLabel: string;
   sortTooltip: string;
+  benchmarkKind?: 'genres' | 'moods';
+  selectionMode?: boolean;
+  onToggleSelectionMode?: () => void;
+  selectLabel?: string;
+  cancelSelectionLabel?: string;
 }
 
 export default function TagCatalogDiscoveryToolbar({
@@ -25,6 +30,11 @@ export default function TagCatalogDiscoveryToolbar({
   popularityLabel,
   alphabeticalLabel,
   sortTooltip,
+  benchmarkKind,
+  selectionMode = false,
+  onToggleSelectionMode,
+  selectLabel,
+  cancelSelectionLabel,
 }: Props) {
   return (
     <div
@@ -60,6 +70,7 @@ export default function TagCatalogDiscoveryToolbar({
           aria-label={searchPlaceholder}
           value={search}
           onChange={event => onSearchChange(event.target.value)}
+          data-benchmark-tag-catalog-search={benchmarkKind}
         />
         {search && (
           <button
@@ -88,6 +99,18 @@ export default function TagCatalogDiscoveryToolbar({
       </div>
 
       <div className="album-track-toolbar-actions">
+        {onToggleSelectionMode && (
+          <button
+            type="button"
+            className={`btn ${selectionMode ? 'btn-primary' : 'btn-surface'}`}
+            onClick={onToggleSelectionMode}
+            aria-pressed={selectionMode}
+          >
+            <ListChecks size={15} />
+            {selectionMode ? cancelSelectionLabel : selectLabel}
+          </button>
+        )}
+        <div data-benchmark-tag-catalog-sort={benchmarkKind}>
         <SortDropdown
           value={sort}
           options={[
@@ -99,6 +122,7 @@ export default function TagCatalogDiscoveryToolbar({
           ariaLabel={sortTooltip}
           align="right"
         />
+        </div>
       </div>
     </div>
   );

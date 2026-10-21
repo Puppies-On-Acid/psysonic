@@ -499,6 +499,72 @@ export type LibraryGenreTracksResponse = {
   source: 'local';
 };
 
+export type LibraryTagKind = 'genre' | 'mood';
+export type LibraryTagMatchMode = 'or' | 'and';
+
+export type LibraryTagFilter = {
+  kind: LibraryTagKind;
+  value: string;
+};
+
+export type LibraryTagExplorerAlbumsRequest = {
+  serverId: string;
+  libraryScope?: string | null;
+  libraryScopes?: LibraryScopePair[];
+  tags: LibraryTagFilter[];
+  mode?: LibraryTagMatchMode;
+  limit?: number;
+  offset?: number;
+  includeTotal?: boolean;
+  countOnly?: boolean;
+};
+
+export type LibraryTagExplorerAlbumsResponse = {
+  albums: LibraryAlbumDto[];
+  hasMore: boolean;
+  total?: number | null;
+  source: 'local';
+};
+
+export type LibraryTagExplorerTracksRequest = {
+  serverId: string;
+  libraryScope?: string | null;
+  libraryScopes?: LibraryScopePair[];
+  tags: LibraryTagFilter[];
+  mode?: LibraryTagMatchMode;
+  limit?: number;
+  offset?: number;
+  includeTotal?: boolean;
+  countOnly?: boolean;
+};
+
+export type LibraryTagExplorerTracksResponse = {
+  tracks: LibraryTrackDto[];
+  hasMore: boolean;
+  total?: number | null;
+  source: 'local';
+};
+
+export type LibraryTagExplorerTrackRefsRequest = {
+  serverId: string;
+  libraryScope?: string | null;
+  libraryScopes?: LibraryScopePair[];
+  tags: LibraryTagFilter[];
+  mode?: LibraryTagMatchMode;
+  limit?: number;
+  offset?: number;
+};
+
+export type LibraryTagExplorerTrackRef = {
+  serverId: string;
+  trackId: string;
+};
+
+export type LibraryTagExplorerTrackRefsResponse = {
+  tracks: LibraryTagExplorerTrackRef[];
+  hasMore: boolean;
+};
+
 export type LibraryMoodAlbumsRequest = {
   serverId: string;
   mood: string;
