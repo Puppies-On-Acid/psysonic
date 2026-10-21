@@ -349,7 +349,7 @@ export default function Playlists() {
   };
 
   // Poll until Navidrome materializes tracks (0.63.x refresh-delay window).
-  usePendingSmartPolling(pendingSmart, setPendingSmart, fetchPlaylists);
+  usePendingSmartPolling(pendingSmart, setPendingSmart);
 
   const handlePlay = async (e: React.MouseEvent, pl: SubsonicPlaylist) => {
     e.stopPropagation();

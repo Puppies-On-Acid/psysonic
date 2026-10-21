@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { ndUpdatePlaylistMeta } from '@/lib/api/navidromeSmart';
 import { getPlaylist, getPlaylistForServer, updatePlaylistMeta, uploadPlaylistCoverArt } from '@/lib/api/subsonicPlaylists';
 import type { SubsonicPlaylist } from '@/lib/api/subsonicTypes';
+import { usePlaylistStore } from '@/features/playlist/store/playlistStore';
 import { showToast } from '@/lib/dom/toast';
 import {
   resolvePlaylistPersistedName,
@@ -41,10 +42,17 @@ export async function runPlaylistSaveMeta(
     await updatePlaylistMeta(id, nextName, opts.comment, opts.isPublic, serverId);
   }
   if (!deps.isCurrent || deps.isCurrent()) {
-    setPlaylist(p => p
-      ? { ...p, name: nextName, comment: opts.comment, public: opts.isPublic }
-      : p
-    );
+    const metadataPatch = {
+      name: nextName,
+      comment: opts.comment,
+      public: opts.isPublic,
+    };
+    setPlaylist(p => p ? { ...p, ...metadataPatch } : p);
+    if (serverId) {
+      usePlaylistStore
+        .getState()
+        .patchPlaylistMetadata(id, serverId, metadataPatch);
+    }
   }
   if (opts.coverFile) {
     try {
@@ -54,6 +62,11 @@ export async function runPlaylistSaveMeta(
         : await getPlaylist(id);
       if (!deps.isCurrent || deps.isCurrent()) {
         setPlaylist(prev => prev ? { ...prev, coverArt: refreshed.coverArt } : prev);
+        if (serverId) {
+          usePlaylistStore
+            .getState()
+            .patchPlaylistMetadata(id, serverId, { coverArt: refreshed.coverArt });
+        }
         if (refreshed.coverArt) setCustomCoverId(refreshed.coverArt);
         showToast(t('playlists.coverUpdated'));
       }

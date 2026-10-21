@@ -1,7 +1,6 @@
 import type React from 'react';
 import type { TFunction } from 'i18next';
-import { ndCreateSmartPlaylist, ndGetSmartPlaylist, ndUpdateSmartPlaylist } from '@/lib/api/navidromeSmart';
-import { getPlaylistForServer } from '@/lib/api/subsonicPlaylists';
+import { ndCreateSmartPlaylist, ndGetPlaylistTrackIds, ndGetSmartPlaylist, ndUpdateSmartPlaylist } from '@/lib/api/navidromeSmart';
 import type { SubsonicPlaylist } from '@/lib/api/subsonicTypes';
 import { usePlaylistStore } from '@/features/playlist/store/playlistStore';
 import {
@@ -62,23 +61,29 @@ function uniquePlaylistName(requested: string, playlists: SubsonicPlaylist[], se
   return candidate;
 }
 
-async function hydrateFirstPageTracks(serverId: string, playlistId: string): Promise<void> {
+async function hydrateSavedSmartMembership(
+  serverId: string,
+  playlistId: string,
+  isCurrent?: () => boolean,
+): Promise<void> {
   try {
-    const { playlist, songs } = await getPlaylistForServer(serverId, playlistId);
-    usePlaylistMembershipStore.getState().setPlaylistSongIds(
-      playlistId,
-      songs.map(song => song.id),
-      serverId,
-    );
+    const songIds = await ndGetPlaylistTrackIds(playlistId, serverId);
+    if (isCurrent && !isCurrent()) return;
+
+    usePlaylistMembershipStore
+      .getState()
+      .setPlaylistSongIds(playlistId, songIds, serverId);
+
     usePlaylistStore.setState(state => ({
       playlists: state.playlists.map(item => (
         item.serverId === serverId && item.id === playlistId
-          ? { ...item, ...playlist, serverId, songCount: songs.length || playlist.songCount }
+          ? { ...item, songCount: songIds.length }
           : item
       )),
     }));
   } catch {
-    // Keep the list row even if the first-page read is still empty.
+    // The pending-smart reconciler will fill membership once Navidrome's
+    // materialized playlist is visible through the detail endpoint.
   }
 }
 
@@ -143,7 +148,7 @@ export async function runPlaylistsSaveSmart(deps: RunPlaylistsSaveSmartDeps): Pr
     }
     await fetchPlaylists();
     if (deps.isCurrent && !deps.isCurrent()) return;
-    if (savedId) await hydrateFirstPageTracks(serverId, savedId);
+    if (savedId) await hydrateSavedSmartMembership(serverId, savedId, deps.isCurrent);
     if (deps.isCurrent && !deps.isCurrent()) return;
     const createdName = name;
     const updatedId = updating ? editingSmartId : savedId ?? null;

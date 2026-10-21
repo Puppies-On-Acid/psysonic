@@ -4,7 +4,12 @@ import type { ColDef } from '@/lib/hooks/useTracklistColumns';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { makeSubsonicSong } from '@/test/helpers/factories';
 import { useThemeStore } from '@/store/themeStore';
+import type {
+  TrackPlaylistMembershipTruthState,
+  TrackPlaylistRef,
+} from '@/store/playlistMembershipIndex';
 import { TrackRow } from './TrackRow';
+import { usePlayerStore } from '@/features/playback';
 
 const columns: ColDef[] = [
   { key: 'num', i18nKey: null, minWidth: 60, defaultWidth: 60, required: true },
@@ -14,14 +19,19 @@ const columns: ColDef[] = [
 function renderRow(
   onDoubleClickSong?: (song: ReturnType<typeof makeSubsonicSong>) => void,
   onCursorClick?: (song: ReturnType<typeof makeSubsonicSong>) => void,
+  visibleCols: ColDef[] = columns,
+  playlistMembershipTruthState: TrackPlaylistMembershipTruthState = 'unknown',
+  playlistMemberships: readonly TrackPlaylistRef[] = [],
 ) {
   const song = makeSubsonicSong({ id: 'album-song-1', title: 'Album song' });
   const onPlaySong = vi.fn();
+  const onDragStart = vi.fn();
+  const onContextMenu = vi.fn();
   const { container } = renderWithProviders(
     <TrackRow
       song={song}
       globalIdx={0}
-      visibleCols={columns}
+      visibleCols={visibleCols}
       gridStyle={{}}
       currentTrack={null}
       isPlaying={false}
@@ -33,21 +43,24 @@ function renderRow(
       onDoubleClickSong={onDoubleClickSong}
       onRate={vi.fn()}
       onToggleSongStar={vi.fn()}
-      onContextMenu={vi.fn()}
+      onContextMenu={onContextMenu}
       onToggleSelect={vi.fn()}
-      onDragStart={vi.fn()}
+      onDragStart={onDragStart}
       setContextMenuSongKey={vi.fn()}
       onCursorClick={onCursorClick}
+      playlistMembershipTruthState={playlistMembershipTruthState}
+      playlistMemberships={playlistMemberships}
     />,
   );
   const row = container.querySelector<HTMLElement>('.track-row')!;
   const playButton = container.querySelector<HTMLButtonElement>('.track-row button')!;
-  return { song, onPlaySong, row, playButton };
+  return { song, onPlaySong, onDragStart, onContextMenu, row, playButton };
 }
 
 describe('TrackRow row click to play', () => {
   afterEach(() => {
     useThemeStore.setState({ trackRowPlayClick: 'single' });
+    usePlayerStore.getState().closeContextMenu();
   });
 
   it('plays on a single click by default', () => {
@@ -112,5 +125,147 @@ describe('TrackRow row click to play', () => {
     const { row } = renderRow(undefined, onCursorClick);
     fireEvent.click(row, { ctrlKey: true });
     expect(onCursorClick).not.toHaveBeenCalled();
+  });
+
+  describe('Playlists column truth states', () => {
+    const playlistColumns: ColDef[] = [
+      ...columns,
+      {
+        key: 'playlists',
+        i18nKey: 'trackPlaylists',
+        minWidth: 100,
+        defaultWidth: 180,
+        required: false,
+        defaultHidden: true,
+      },
+    ];
+    const memberships: readonly TrackPlaylistRef[] = [
+      {
+        id: 'focus',
+        serverId: 'srv-1',
+        name: 'psy-smart-Focus',
+      },
+      {
+        id: 'road',
+        serverId: 'srv-1',
+        name: 'Road Trip',
+      },
+    ];
+
+    it('renders one direct playlist and a [+N] control when membership is ready', () => {
+      const { row } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'ready',
+        memberships,
+      );
+
+      expect(row.children).toHaveLength(3);
+      expect(row.querySelector('.track-playlist-link')).toHaveTextContent('Focus');
+      expect(row.querySelector('.track-playlist-more')).toHaveTextContent('[+1]');
+    });
+
+    it('does not play the row when the direct playlist or [+N] control is clicked', () => {
+      const { onPlaySong } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'ready',
+        memberships,
+      );
+
+      fireEvent.click(document.querySelector<HTMLButtonElement>('.track-playlist-link')!);
+      expect(onPlaySong).not.toHaveBeenCalled();
+
+      fireEvent.click(document.querySelector<HTMLButtonElement>('.track-playlist-more')!);
+      expect(onPlaySong).not.toHaveBeenCalled();
+    });
+
+    it('does not open the row context menu from playlist controls', () => {
+      const { onContextMenu } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'ready',
+        memberships,
+      );
+
+      fireEvent.contextMenu(
+        document.querySelector<HTMLButtonElement>('.track-playlist-link')!,
+        { clientX: 18, clientY: 27 },
+      );
+      expect(onContextMenu).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().contextMenu).toMatchObject({
+        isOpen: true,
+        type: 'playlist-membership',
+        x: 18,
+        y: 27,
+        item: {
+          id: 'focus',
+          serverId: 'srv-1',
+          songId: 'album-song-1',
+        },
+      });
+    });
+
+    it('does not arm a row drag from playlist controls', () => {
+      const { onDragStart } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'ready',
+        memberships,
+      );
+      const more = document.querySelector<HTMLButtonElement>('.track-playlist-more')!;
+
+      fireEvent.mouseDown(more, { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.mouseMove(document, { clientX: 30, clientY: 10 });
+      fireEvent.mouseUp(document);
+
+      expect(onDragStart).not.toHaveBeenCalled();
+    });
+
+    it('uses an em dash only for a checked, genuinely empty result', () => {
+      const { row } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'ready',
+      );
+
+      expect(row.querySelector('.track-playlists-cell')).toHaveTextContent('—');
+    });
+
+    it('never presents loading or partial membership as definitely empty', () => {
+      const loading = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'loading',
+      ).row;
+      expect(loading.querySelector('.track-playlists-cell')).toHaveTextContent('…');
+
+      const partial = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'partial',
+        memberships.slice(0, 1),
+      ).row;
+      expect(partial.querySelector('.track-playlist-link')).toHaveTextContent('Focus');
+      expect(partial.querySelector('.track-playlist-partial')).toHaveTextContent('…');
+    });
+
+    it('leaves unknown membership blank', () => {
+      const { row } = renderRow(
+        undefined,
+        undefined,
+        playlistColumns,
+        'unknown',
+      );
+
+      expect(row.querySelector('.track-playlists-cell')).toHaveTextContent('');
+    });
   });
 });

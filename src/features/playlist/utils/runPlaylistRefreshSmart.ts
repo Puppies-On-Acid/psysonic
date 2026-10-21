@@ -1,4 +1,4 @@
-import { ndGetPlaylistTracks } from '@/lib/api/navidromeSmart';
+import { ndGetPlaylistTrackIds } from '@/lib/api/navidromeSmart';
 import { usePlaylistMembershipStore } from '@/store/playlistMembershipStore';
 
 interface RunPlaylistRefreshSmartDeps {
@@ -13,8 +13,10 @@ export async function runPlaylistRefreshSmart({
   serverId,
   reload,
 }: RunPlaylistRefreshSmartDeps): Promise<void> {
-  // Navidrome refreshes smart membership when the native tracks request starts at zero.
-  await ndGetPlaylistTracks(id, serverId, { start: 0, end: 1 });
-  usePlaylistMembershipStore.getState().invalidatePlaylistSongIds(id, serverId);
+  // Starting the native tracks read at zero performs the smart evaluation.
+  // Capture that exact result so album membership does not depend on the
+  // potentially lagging Subsonic projection.
+  const songIds = await ndGetPlaylistTrackIds(id, serverId);
+  usePlaylistMembershipStore.getState().setPlaylistSongIds(id, songIds, serverId);
   await reload();
 }
