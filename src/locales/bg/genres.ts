@@ -7,6 +7,8 @@ export const genres = {
   empty: 'Не са намерени жанрове.',
   albumsLoading: 'Зареждане на албуми…',
   albumsEmpty: 'Не са намерени албуми за този жанр.',
+  tracksEmpty: 'No tracks found for this genre.',
+  viewTabsLabel: 'Genre results',
   loadMore: 'Зареди още',
   back: 'Назад',
   playTooltip: 'Пусни (задръж за разбъркване)',
