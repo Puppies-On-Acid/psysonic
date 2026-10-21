@@ -13,6 +13,8 @@ import type {
   MoodAlbumCountRow,
   LibraryGenreAlbumsRequest,
   LibraryGenreAlbumsResponse,
+  LibraryGenreTracksRequest,
+  LibraryGenreTracksResponse,
   LibraryMoodAlbumsRequest,
   LibraryMoodAlbumsResponse,
   PlaySessionInput,
@@ -92,6 +94,35 @@ export function libraryListAlbumsByGenre(
     albums: response.albums.map(album => ({
       ...album,
       serverId: mapServerIdFromIndexKey(album.serverId, request.serverId),
+    })),
+  }));
+}
+
+/** Paginated tracks for one genre from the local track-genre index. */
+export function libraryListTracksByGenre(
+  request: LibraryGenreTracksRequest,
+): Promise<LibraryGenreTracksResponse> {
+  const indexKey = serverIndexKeyForId(request.serverId);
+  const libraryScopes = request.libraryScopes
+    ? mapScopePairs(request.libraryScopes, request.serverId)
+    : undefined;
+
+  return invoke<LibraryGenreTracksResponse>('library_list_tracks_by_genre', {
+    request: {
+      serverId: indexKey,
+      genre: request.genre,
+      libraryScope: request.libraryScope ?? undefined,
+      libraryScopes,
+      limit: request.limit ?? 100,
+      offset: request.offset ?? 0,
+      includeTotal: request.includeTotal ?? false,
+      countOnly: request.countOnly ?? false,
+    },
+  }).then(response => ({
+    ...response,
+    tracks: response.tracks.map(track => ({
+      ...track,
+      serverId: mapServerIdFromIndexKey(track.serverId, request.serverId),
     })),
   }));
 }
