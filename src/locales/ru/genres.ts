@@ -9,6 +9,8 @@ export const genres = {
   empty: 'Жанры не найдены.',
   albumsLoading: 'Загрузка альбомов…',
   albumsEmpty: 'В этом жанре альбомов нет.',
+  tracksEmpty: 'Треки этого жанра не найдены.',
+  viewTabsLabel: 'Результаты по жанру',
   loadMore: 'Ещё',
   back: 'Назад',
   playTooltip: 'Воспроизвести (удерживать для перемешивания)',
