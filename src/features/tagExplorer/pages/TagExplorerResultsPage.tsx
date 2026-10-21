@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-} from 'react';
+import { useCallback, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
@@ -18,10 +13,7 @@ import {
   serializeTagExplorerSearch,
   type TagExplorerView,
 } from '@/features/tagExplorer/utils/tagExplorerQuery';
-import {
-  readTagExplorerScroll,
-  writeTagExplorerScroll,
-} from '@/features/tagExplorer/utils/tagExplorerScroll';
+import { useTagExplorerScrollRestore } from '@/features/tagExplorer/hooks/useTagExplorerScrollRestore';
 import { PagedSongList } from '@/features/search';
 import { TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID } from '@/constants/appScroll';
 import { useInpageScrollSentinel } from '@/lib/hooks/useInpageScrollSentinel';
@@ -148,19 +140,38 @@ export default function TagExplorerResultsPage() {
     resolvedTrackTotal,
   );
 
+  const { scrollBodyEl, bindScrollBody, getScrollRoot } = useInpageScrollViewport();
+  const { saveBeforeNavigation } = useTagExplorerScrollRestore({
+    pathname: location.pathname,
+    search: location.search,
+    view: state.view,
+    valid,
+    scrollBodyEl,
+    displayCount: state.view === 'albums' ? albums.length : songs.length,
+    ready: state.view === 'albums'
+      ? albumsReady || albumError !== null
+      : tracksReady || trackError !== null,
+    loading: state.view === 'albums' ? albumsLoading : tracksLoading,
+    loadingMore: state.view === 'albums' ? albumsLoadingMore : tracksLoadingMore,
+    hasMore: state.view === 'albums' ? albumHasMore : trackHasMore,
+    loadMore: state.view === 'albums' ? loadMoreAlbums : loadMoreTracks,
+  });
+
   const updateQuery = useCallback((
     patch: Partial<{
       mode: 'or' | 'and';
       view: TagExplorerView;
     }>,
   ) => {
+    const search = serializeTagExplorerSearch({
+      tags: state.tags,
+      mode: patch.mode ?? state.mode,
+      view: patch.view ?? state.view,
+    });
+    if (search !== location.search) saveBeforeNavigation();
     navigate({
       pathname: location.pathname,
-      search: serializeTagExplorerSearch({
-        tags: state.tags,
-        mode: patch.mode ?? state.mode,
-        view: patch.view ?? state.view,
-      }),
+      search,
       hash: location.hash,
     }, {
       replace: true,
@@ -171,12 +182,12 @@ export default function TagExplorerResultsPage() {
     location.pathname,
     location.state,
     navigate,
+    saveBeforeNavigation,
     state.mode,
     state.tags,
     state.view,
   ]);
 
-  const { scrollBodyEl, bindScrollBody, getScrollRoot } = useInpageScrollViewport();
   const headerTight = useMainstageInpageHeaderTight(
     scrollBodyEl,
     [location.pathname, location.search],
@@ -195,60 +206,6 @@ export default function TagExplorerResultsPage() {
     onIntersect: loadMoreTracks,
     rootMargin: '600px',
   });
-
-  useEffect(() => {
-    const root = scrollBodyEl;
-    if (!root || !valid) return;
-
-    const onScroll = () => {
-      const saved = readTagExplorerScroll(
-        location.pathname,
-        location.search,
-      );
-      writeTagExplorerScroll(
-        location.pathname,
-        location.search,
-        {
-          ...saved,
-          [state.view]: root.scrollTop,
-        },
-      );
-    };
-
-    root.addEventListener('scroll', onScroll, {
-      passive: true,
-    });
-    return () => {
-      onScroll();
-      root.removeEventListener('scroll', onScroll);
-    };
-  }, [
-    scrollBodyEl,
-    location.pathname,
-    location.search,
-    state.view,
-    valid,
-  ]);
-
-  useLayoutEffect(() => {
-    const root = scrollBodyEl;
-    if (!root || !valid) return;
-    const saved = readTagExplorerScroll(
-      location.pathname,
-      location.search,
-    );
-    const target = saved[state.view];
-    const frame = requestAnimationFrame(() => {
-      root.scrollTop = target;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [
-    scrollBodyEl,
-    location.pathname,
-    location.search,
-    state.view,
-    valid,
-  ]);
 
   const error = state.view === 'albums'
     ? albumError
@@ -319,7 +276,10 @@ export default function TagExplorerResultsPage() {
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => navigate(`/${origin}`)}
+            onClick={() => {
+              saveBeforeNavigation();
+              navigate(`/${origin}`);
+            }}
           >
             <ArrowLeft size={16} />
             {t('tagExplorer.back')}

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 
@@ -7,6 +7,7 @@ import {
   mainRouteInpageScrollViewportId,
   TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
 } from '@/constants/appScroll';
+import { readTagExplorerScroll } from '@/features/tagExplorer/utils/tagExplorerScroll';
 import { useAuthStore } from '@/store/authStore';
 import { makeServer } from '@/test/helpers/factories';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
@@ -112,6 +113,7 @@ function renderPage(search: string, origin = 'genres') {
 
 describe('TagExplorerResultsPage', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     resetAuthStore();
     const server = makeServer({ id: 's1' });
     useAuthStore.setState({
@@ -244,6 +246,32 @@ describe('TagExplorerResultsPage', () => {
     const scrollViewport = document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID);
     expect(within(scrollViewport!).getByText('Track One')).toBeInTheDocument();
     expect(scrollViewport).not.toContainElement(toolbar);
+  });
+
+  it('restores independent Albums and Tracks positions after switching views', async () => {
+    const user = userEvent.setup();
+    hoisted.useBrowse.mockImplementation(() => browseResult({
+      songs: [{ id: 't-scroll', serverId: 's1', title: 'Scroll Track' }],
+      trackTotal: 1,
+      tracksReady: true,
+    }));
+
+    const search = '?tag=genre%3ARock&tag=mood%3ADreamy';
+    renderPage(search);
+    const viewport = document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID)!;
+
+    fireEvent.scroll(Object.assign(viewport, { scrollTop: 420 }));
+    await user.click(screen.getByRole('tab', { name: /Tracks/i }));
+    fireEvent.scroll(Object.assign(viewport, { scrollTop: 760 }));
+    await user.click(screen.getByRole('tab', { name: /Albums/i }));
+    expect(await screen.findByText('Album One')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /Tracks/i }));
+
+    expect(await screen.findByText('Scroll Track')).toBeInTheDocument();
+    await waitFor(() => expect(viewport.scrollTop).toBe(760));
+    const snapshots = readTagExplorerScroll('/genres/explore/results', search);
+    expect(snapshots.albums).toBe(420);
+    expect(snapshots.tracks).toBe(760);
   });
 
 });
