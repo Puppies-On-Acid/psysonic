@@ -453,7 +453,6 @@ export default function TagExplorerResultsPage() {
             </div>
           )}
         </div>
-
       </div>
 
       <OverlayScrollArea
@@ -478,114 +477,114 @@ export default function TagExplorerResultsPage() {
         ]}
       >
         <div className="tag-explorer-results-body">
-        {error && (
-          <div className="empty-state">
-            <h2>{t('tagExplorer.unavailableTitle')}</h2>
-            <p>{t('tagExplorer.unavailableMessage')}</p>
-          </div>
-        )}
-
-        {!error && state.view === 'albums' && (
-          albumsLoading && albums.length === 0 ? (
-            <div className="tag-explorer-loading">
-              <div className="spinner" />
-            </div>
-          ) : albums.length === 0 ? (
+          {error && (
             <div className="empty-state">
-              <p>{t('tagExplorer.noAlbums')}</p>
-              {state.mode === 'and' && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => updateQuery({ mode: 'or' })}
-                >
-                  {t('tagExplorer.switchToOr')}
-                </button>
-              )}
+              <h2>{t('tagExplorer.unavailableTitle')}</h2>
+              <p>{t('tagExplorer.unavailableMessage')}</p>
             </div>
-          ) : (
-            <>
-              <VirtualCardGrid
-                items={albums}
-                itemKey={album => ownedEntityKey(album)}
-                rowVariant="album"
-                disableVirtualization={perfFlags.disableMainstageVirtualLists}
-                layoutSignal={albums.length}
-                scrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
-                warmGridCovers={albumGridWarmCovers()}
-                renderItem={album => (
-                  <AlbumCard
-                    album={album}
-                    observeScrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+          )}
+
+          {!error && state.view === 'albums' && (
+            albumsLoading && albums.length === 0 ? (
+              <div className="tag-explorer-loading">
+                <div className="spinner" />
+              </div>
+            ) : albums.length === 0 ? (
+              <div className="empty-state">
+                <p>{t('tagExplorer.noAlbums')}</p>
+                {state.mode === 'and' && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => updateQuery({ mode: 'or' })}
+                  >
+                    {t('tagExplorer.switchToOr')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <VirtualCardGrid
+                  items={albums}
+                  itemKey={album => ownedEntityKey(album)}
+                  rowVariant="album"
+                  disableVirtualization={perfFlags.disableMainstageVirtualLists}
+                  layoutSignal={albums.length}
+                  scrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+                  warmGridCovers={albumGridWarmCovers()}
+                  renderItem={album => (
+                    <AlbumCard
+                      album={album}
+                      observeScrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+                    />
+                  )}
+                />
+                {albumHasMore && (
+                  <InpageScrollSentinel
+                    bindSentinel={bindAlbumLoadMore}
+                    loading={albumsLoadingMore}
+                    itemCount={albums.length}
                   />
                 )}
-              />
-              {albumHasMore && (
-                <InpageScrollSentinel
-                  bindSentinel={bindAlbumLoadMore}
-                  loading={albumsLoadingMore}
-                  itemCount={albums.length}
-                />
-              )}
-            </>
-          )
-        )}
+              </>
+            )
+          )}
 
-        {!error && state.view === 'tracks' && (
-          tracksLoading && songs.length === 0 ? (
-            <div className="tag-explorer-loading">
-              <div className="spinner" />
-            </div>
-          ) : songs.length === 0 ? (
-            <div className="empty-state">
-              <p>{t('tagExplorer.noTracks')}</p>
-              {state.mode === 'and' && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => updateQuery({ mode: 'or' })}
-                >
-                  {t('tagExplorer.switchToOr')}
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <PagedSongList
-                songs={songs}
-                hasMore={false}
-                loadingMore={false}
-                onLoadMore={loadMoreTracks}
-                selection={{
-                  isSelected: trackSelection.isSelected,
-                  onToggle: (_song, rowIndex, shift) =>
-                    trackSelection.toggle(songs, rowIndex, shift),
-                  label: (song, selected) =>
-                    t(
-                      selected
-                        ? 'tagExplorer.deselectTrack'
-                        : 'tagExplorer.selectTrack',
-                      { title: song.title },
-                    ),
-                }}
-              />
-              {trackHasMore && (
-                <InpageScrollSentinel
-                  bindSentinel={bindTrackLoadMore}
-                  loading={tracksLoadingMore}
-                  itemCount={songs.length}
-                  style={{ padding: '1rem', height: 'auto', margin: 0 }}
+          {!error && state.view === 'tracks' && (
+            tracksLoading && songs.length === 0 ? (
+              <div className="tag-explorer-loading">
+                <div className="spinner" />
+              </div>
+            ) : songs.length === 0 ? (
+              <div className="empty-state">
+                <p>{t('tagExplorer.noTracks')}</p>
+                {state.mode === 'and' && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => updateQuery({ mode: 'or' })}
+                  >
+                    {t('tagExplorer.switchToOr')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <PagedSongList
+                  songs={songs}
+                  hasMore={false}
+                  loadingMore={false}
+                  onLoadMore={loadMoreTracks}
+                  selection={{
+                    isSelected: trackSelection.isSelected,
+                    onToggle: (_song, rowIndex, shift) =>
+                      trackSelection.toggle(songs, rowIndex, shift),
+                    label: (song, selected) =>
+                      t(
+                        selected
+                          ? 'tagExplorer.deselectTrack'
+                          : 'tagExplorer.selectTrack',
+                        { title: song.title },
+                      ),
+                  }}
                 />
-              )}
-            </>
-          )
-        )}
+                {trackHasMore && (
+                  <InpageScrollSentinel
+                    bindSentinel={bindTrackLoadMore}
+                    loading={tracksLoadingMore}
+                    itemCount={songs.length}
+                    style={{ padding: '1rem', height: 'auto', margin: 0 }}
+                  />
+                )}
+              </>
+            )
+          )}
 
-        {currentEmpty && state.mode === 'or' && (
-          <span className="sr-only">
-            {t('tagExplorer.noResults')}
-          </span>
-        )}
+          {currentEmpty && state.mode === 'or' && (
+            <span className="sr-only">
+              {t('tagExplorer.noResults')}
+            </span>
+          )}
         </div>
       </OverlayScrollArea>
     </div>
