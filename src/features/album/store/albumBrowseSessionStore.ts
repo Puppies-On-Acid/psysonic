@@ -23,6 +23,16 @@ export type AlbumBrowseCompFilter = 'all' | 'only' | 'hide';
 /** Album grid browse surfaces that share leave-restore session behavior. */
 export type AlbumBrowseSurface = 'albums' | 'new-releases' | 'random-albums';
 
+export type GenreDetailTabScrollSnapshot = {
+  scrollTop: number;
+  displayCount: number;
+};
+
+export type GenreDetailTabScrollSnapshots = {
+  albums: GenreDetailTabScrollSnapshot;
+  tracks: GenreDetailTabScrollSnapshot;
+};
+
 export type MoodDetailTabScrollSnapshot = {
   scrollTop: number;
   displayCount: number;
@@ -67,6 +77,8 @@ interface AlbumBrowseSessionStore {
   sortByServer: Record<string, AlbumBrowseSort>;
   /** Stashed when leaving a browse surface → album detail; consumed after scroll restore. */
   returnStashByKey: Record<string, AlbumBrowseReturnFilters>;
+  /** Genre-detail Albums/Tracks positions kept for the lifetime of that browse session. */
+  genreDetailTabScrollByKey: Record<string, GenreDetailTabScrollSnapshots>;
   /** Mood-detail Albums/Tracks positions kept for the lifetime of that browse session. */
   moodDetailTabScrollByKey: Record<string, MoodDetailTabScrollSnapshots>;
   setSort: (serverId: string, sort: AlbumBrowseSort) => void;
@@ -98,6 +110,15 @@ function sortEntryFor(
   return sortByServer[serverId] ?? DEFAULT_ALBUM_BROWSE_SORT;
 }
 
+function cloneGenreDetailTabScrollSnapshots(
+  snapshots: GenreDetailTabScrollSnapshots,
+): GenreDetailTabScrollSnapshots {
+  return {
+    albums: { ...snapshots.albums },
+    tracks: { ...snapshots.tracks },
+  };
+}
+
 function cloneMoodDetailTabScrollSnapshots(
   snapshots: MoodDetailTabScrollSnapshots,
 ): MoodDetailTabScrollSnapshots {
@@ -126,6 +147,7 @@ function cloneReturnFilters(filters: AlbumBrowseReturnFilters): AlbumBrowseRetur
 export const useAlbumBrowseSessionStore = create<AlbumBrowseSessionStore>((set, get) => ({
   sortByServer: {},
   returnStashByKey: {},
+  genreDetailTabScrollByKey: {},
   moodDetailTabScrollByKey: {},
 
   setSort: (serverId, sort) => {
@@ -223,6 +245,48 @@ export function peekGenreDetailScrollRestore(
     scrollTop: Math.max(0, stash.scrollTop),
     displayCount: Math.max(0, stash.displayCount),
   };
+}
+
+export function stashGenreDetailTabScrollSnapshots(
+  serverId: string,
+  genreName: string,
+  snapshots: GenreDetailTabScrollSnapshots,
+): void {
+  if (!serverId || !genreName) return;
+  const key = genreDetailStashKey(serverId, genreName);
+  useAlbumBrowseSessionStore.setState((state) => ({
+    genreDetailTabScrollByKey: {
+      ...state.genreDetailTabScrollByKey,
+      [key]: cloneGenreDetailTabScrollSnapshots(snapshots),
+    },
+  }));
+}
+
+export function clearGenreDetailTabScrollSnapshots(
+  serverId: string,
+  genreName: string,
+): void {
+  if (!serverId || !genreName) return;
+  const key = genreDetailStashKey(serverId, genreName);
+  useAlbumBrowseSessionStore.setState((state) => {
+    const next = { ...state.genreDetailTabScrollByKey };
+    delete next[key];
+    return { genreDetailTabScrollByKey: next };
+  });
+}
+
+export function peekGenreDetailTabScrollSnapshots(
+  serverId: string,
+  genreName: string,
+): GenreDetailTabScrollSnapshots | null {
+  if (!serverId || !genreName) return null;
+  const snapshots =
+    useAlbumBrowseSessionStore.getState().genreDetailTabScrollByKey[
+      genreDetailStashKey(serverId, genreName)
+    ];
+  return snapshots
+    ? cloneGenreDetailTabScrollSnapshots(snapshots)
+    : null;
 }
 
 /** Mood detail leave-restore (scoped per mood name). */
