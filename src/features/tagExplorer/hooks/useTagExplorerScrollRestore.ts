@@ -127,7 +127,6 @@ export function useTagExplorerScrollRestore({
         return;
       }
 
-      // eslint-disable-next-line react-hooks/immutability
       scrollBodyEl.scrollTop = pending.scrollTop;
       pendingRef.current = null;
       scrollBodyEl.dispatchEvent(new Event('scroll'));

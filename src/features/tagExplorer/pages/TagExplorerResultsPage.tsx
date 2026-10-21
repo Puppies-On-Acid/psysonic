@@ -183,6 +183,7 @@ export default function TagExplorerResultsPage() {
   }, [
     location.hash,
     location.pathname,
+    location.search,
     location.state,
     navigate,
     saveBeforeNavigation,
