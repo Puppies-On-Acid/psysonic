@@ -736,6 +736,7 @@ pub fn run() {
             psysonic_library::commands::library_list_starred,
             psysonic_library::commands::library_list_lossless_albums,
             psysonic_library::commands::library_list_albums_by_genre,
+            psysonic_library::commands::library_list_tracks_by_genre,
             psysonic_library::commands::library_list_albums_by_mood,
             psysonic_library::commands::library_list_tracks_by_mood,
             psysonic_library::commands::library_genre_tags_inspect,
