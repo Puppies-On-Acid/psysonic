@@ -84,7 +84,11 @@ describe('useTagExplorerScrollRestore', () => {
       element.scrollTop = 950;
       fireEvent.scroll(element);
       result.current.saveBeforeNavigation();
+      // Switching to the shorter Albums layout can clamp the outgoing viewport.
+      element.scrollTop = 0;
+      fireEvent.scroll(element);
     });
+    expect(readTagExplorerScroll(pathname, trackSearch).tracks).toBe(950);
     rerender({ view: 'albums', search: albumSearch, displayCount: 60 });
     await waitFor(() => expect(element.scrollTop).toBe(450));
 
