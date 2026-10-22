@@ -20,6 +20,7 @@ import { DiscHeaderCover } from '@/features/album/components/DiscHeaderCover';
 import { offlineActionPolicy, type OfflineActionPolicy } from '@/features/offline';
 import { songToTrack } from '@/lib/media/songToTrack';
 import { ownedEntityKey, ownedOverrideValue } from '@/lib/util/ownedEntityKey';
+import { useShowStarRatings, withoutRatingColumn } from '@/store/starRatings';
 import { playlistMembershipsForTrack } from '@/store/playlistMembershipIndex';
 import { usePlaylistMembershipHydration } from '@/features/playlist';
 
@@ -98,11 +99,13 @@ export default function AlbumTrackList({
     onContextMenu(x, y, track, type);
   }, [songs, onContextMenu, openContextMenu]);
 
+  const showStarRatings = useShowStarRatings();
+  const albumColumns = useMemo(() => withoutRatingColumn(COLUMNS, showStarRatings), [showStarRatings]);
   const {
     colVisible, visibleCols, gridStyle,
     startResize, startFlexColumnResize, toggleColumn, resetColumns,
     pickerOpen, setPickerOpen, pickerRef, tracklistRef,
-  } = useTracklistColumns(COLUMNS, 'psysonic_tracklist_columns');
+  } = useTracklistColumns(albumColumns, 'psysonic_tracklist_columns');
 
   const playlistMembershipActive = (
     !isMobile
