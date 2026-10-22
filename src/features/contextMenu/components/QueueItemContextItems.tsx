@@ -1,9 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import { Play, Radio, Heart, ChevronRight, User, Disc3, ListMusic, Info, Sparkles, Star, Trash2 } from 'lucide-react';
+import { Play, Radio, Heart, ChevronRight, User, Disc3, ListMusic, Info, ScrollText, Sparkles, Star, Trash2 } from 'lucide-react';
 import { queueSongStar } from '@/features/playback/store/pendingStarSync';
 import { getMusicNetworkRuntime } from '@/music-network';
 import type { Track } from '@/lib/media/trackTypes';
 import { useAuthStore } from '@/store/authStore';
+import { useLyricsStore } from '@/store/lyricsStore';
 import { renderPresetIcon, useEnrichmentPrimary } from '@/music-network/ui';
 import StarRating from '@/ui/StarRating';
 import { AddToPlaylistSubmenu } from '@/features/contextMenu/components/AddToPlaylistSubmenu';
@@ -129,6 +130,9 @@ export default function QueueItemContextItems(props: ContextMenuItemsProps) {
               />
               <div className="context-menu-item" onClick={() => handleAction(() => openSongInfo(song.id, song.serverId))}>
                 <Info size={14} /> {t('contextMenu.songInfo')}
+              </div>
+              <div className="context-menu-item" onClick={() => handleAction(() => useLyricsStore.getState().openLyricsDialog(song))}>
+                <ScrollText size={14} /> {t('contextMenu.viewLyrics')}
               </div>
             </>
           );
