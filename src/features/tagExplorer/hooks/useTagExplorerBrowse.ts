@@ -233,6 +233,8 @@ export function useTagExplorerBrowse(
     }
 
     if (!serverId || tags.length < 2) {
+      // An invalid query must clear stale loading state immediately.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAlbumsLoading(false);
       setTracksLoading(false);
       return;
