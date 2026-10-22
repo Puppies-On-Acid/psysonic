@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 
+import {
+  mainRouteInpageScrollViewportId,
+  TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
+} from '@/constants/appScroll';
 import { useAuthStore } from '@/store/authStore';
 import { makeServer } from '@/test/helpers/factories';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
@@ -180,4 +184,51 @@ describe('TagExplorerResultsPage', () => {
       screen.getByText('Choose at least two tags'),
     ).toBeInTheDocument();
   });
+  it('keeps Explorer controls outside the results scroller', () => {
+    renderPage('?tag=genre%3ARock&tag=mood%3ADreamy');
+
+    const scrollViewport = document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID);
+    expect(scrollViewport).not.toBeNull();
+    expect(within(scrollViewport!).getByText('Album One')).toBeInTheDocument();
+
+    const toolbar = document.querySelector(
+      '.tag-explorer-results > .mainstage-inpage-toolbar',
+    );
+    expect(toolbar).not.toBeNull();
+    expect(toolbar).toContainElement(screen.getByRole('button', { name: 'Back' }));
+    expect(toolbar).toContainElement(screen.getByRole('tab', { name: /Albums/i }));
+    expect(toolbar).toContainElement(screen.getByRole('button', { name: 'All (AND)' }));
+    expect(scrollViewport).not.toContainElement(toolbar);
+  });
+
+  it('routes both Explorer origins to the new in-page scroller', () => {
+    expect(mainRouteInpageScrollViewportId('/genres/explore/results')).toBe(
+      TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
+    );
+    expect(mainRouteInpageScrollViewportId('/moods/explore/results')).toBe(
+      TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
+    );
+    expect(mainRouteInpageScrollViewportId('/genres/Rock')).not.toBe(
+      TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
+    );
+  });
+
+  it('keeps playlist controls above the scrolling tracks', () => {
+    hoisted.useBrowse.mockReturnValue(browseResult({
+      albums: [],
+      songs: [{ id: 't1', serverId: 's1', title: 'Track One' }],
+      trackTotal: 1,
+      tracksReady: true,
+    }));
+    renderPage('?tag=genre%3ARock&tag=mood%3ADreamy&view=tracks');
+
+    const toolbar = document.querySelector(
+      '.tag-explorer-results > .mainstage-inpage-toolbar',
+    );
+    expect(toolbar).toContainElement(
+      screen.getByRole('button', { name: /Select all 1 matching tracks/i }),
+    );
+    expect(toolbar).toContainElement(screen.getByText('Playlist action'));
+  });
+
 });

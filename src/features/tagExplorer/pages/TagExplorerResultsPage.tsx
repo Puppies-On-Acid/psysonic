@@ -23,8 +23,10 @@ import {
   writeTagExplorerScroll,
 } from '@/features/tagExplorer/utils/tagExplorerScroll';
 import { PagedSongList } from '@/features/search';
-import { APP_MAIN_SCROLL_VIEWPORT_ID } from '@/constants/appScroll';
+import { TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID } from '@/constants/appScroll';
 import { useInpageScrollSentinel } from '@/lib/hooks/useInpageScrollSentinel';
+import { useInpageScrollViewport } from '@/lib/hooks/useInpageScrollViewport';
+import { useMainstageInpageHeaderTight } from '@/lib/hooks/useMainstageInpageHeaderTight';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { genreColor } from '@/lib/library/genreColor';
 import { useUnavailableServerIds } from '@/lib/network/serverReachability';
@@ -32,6 +34,7 @@ import { usePerfProbeFlags } from '@/lib/perf/perfFlags';
 import { ownedEntityKey } from '@/lib/util/ownedEntityKey';
 import { useAuthStore } from '@/store/authStore';
 import InpageScrollSentinel from '@/ui/InpageScrollSentinel';
+import OverlayScrollArea from '@/ui/OverlayScrollArea';
 import { VirtualCardGrid } from '@/ui/VirtualCardGrid';
 
 function formatCount(
@@ -173,19 +176,28 @@ export default function TagExplorerResultsPage() {
     state.view,
   ]);
 
-  const getMainScrollRoot = useCallback(
-    () => document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID),
-    [],
+  const { scrollBodyEl, bindScrollBody, getScrollRoot } = useInpageScrollViewport();
+  const headerTight = useMainstageInpageHeaderTight(
+    scrollBodyEl,
+    [location.pathname, location.search],
   );
   const bindAlbumLoadMore = useInpageScrollSentinel({
     active: state.view === 'albums' && albumHasMore,
-    getScrollRoot: getMainScrollRoot,
+    getScrollRoot,
+    scrollRootEl: scrollBodyEl,
     onIntersect: loadMoreAlbums,
+    rootMargin: '600px',
+  });
+  const bindTrackLoadMore = useInpageScrollSentinel({
+    active: state.view === 'tracks' && trackHasMore,
+    getScrollRoot,
+    scrollRootEl: scrollBodyEl,
+    onIntersect: loadMoreTracks,
     rootMargin: '600px',
   });
 
   useEffect(() => {
-    const root = getMainScrollRoot();
+    const root = scrollBodyEl;
     if (!root || !valid) return;
 
     const onScroll = () => {
@@ -211,7 +223,7 @@ export default function TagExplorerResultsPage() {
       root.removeEventListener('scroll', onScroll);
     };
   }, [
-    getMainScrollRoot,
+    scrollBodyEl,
     location.pathname,
     location.search,
     state.view,
@@ -219,7 +231,7 @@ export default function TagExplorerResultsPage() {
   ]);
 
   useLayoutEffect(() => {
-    const root = getMainScrollRoot();
+    const root = scrollBodyEl;
     if (!root || !valid) return;
     const saved = readTagExplorerScroll(
       location.pathname,
@@ -231,7 +243,7 @@ export default function TagExplorerResultsPage() {
     });
     return () => cancelAnimationFrame(frame);
   }, [
-    getMainScrollRoot,
+    scrollBodyEl,
     location.pathname,
     location.search,
     state.view,
@@ -249,38 +261,48 @@ export default function TagExplorerResultsPage() {
 
   if (!valid) {
     return (
-      <div className="content-body animate-fade-in">
-        <div className="tag-explorer-page-header">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => navigate(`/${origin}`)}
-          >
-            <ArrowLeft size={16} />
-            {t('tagExplorer.back')}
-          </button>
-          <h1 className="page-title">
-            {t('tagExplorer.title')}
-          </h1>
+      <div className="content-body animate-fade-in mainstage-inpage-split tag-explorer-results">
+        <div className="mainstage-inpage-toolbar">
+          <div className="page-sticky-header mainstage-inpage-toolbar-row tag-explorer-page-header">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => navigate(`/${origin}`)}
+            >
+              <ArrowLeft size={16} />
+              {t('tagExplorer.back')}
+            </button>
+            <h1 className="page-title">{t('tagExplorer.title')}</h1>
+          </div>
         </div>
-        <div className="empty-state">
-          <h2>{t('tagExplorer.invalidTitle')}</h2>
-          <p>{t('tagExplorer.invalidMessage')}</p>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => navigate(`/${origin}`)}
-          >
-            {t('tagExplorer.chooseTags')}
-          </button>
-        </div>
+        <OverlayScrollArea
+          className="mainstage-inpage-scroll"
+          viewportClassName="mainstage-inpage-scroll__viewport"
+          viewportId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+          viewportRef={bindScrollBody}
+          railInset="panel"
+        >
+          <div className="empty-state">
+            <h2>{t('tagExplorer.invalidTitle')}</h2>
+            <p>{t('tagExplorer.invalidMessage')}</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => navigate(`/${origin}`)}
+            >
+              {t('tagExplorer.chooseTags')}
+            </button>
+          </div>
+        </OverlayScrollArea>
       </div>
     );
   }
 
   return (
     <div
-      className="content-body animate-fade-in tag-explorer-results"
+      className={`content-body animate-fade-in mainstage-inpage-split tag-explorer-results${headerTight
+        ? ' mainstage-inpage--header-tight'
+        : ''}`}
       data-benchmark-tag-explorer-view={state.view}
       data-benchmark-tag-explorer-mode={state.mode}
       data-benchmark-loading={
@@ -292,237 +314,280 @@ export default function TagExplorerResultsPage() {
         state.view === 'albums' ? albums.length : songs.length
       }
     >
-      <div className="tag-explorer-page-header">
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => navigate(`/${origin}`)}
-        >
-          <ArrowLeft size={16} />
-          {t('tagExplorer.back')}
-        </button>
-        <div className="tag-explorer-page-heading">
-          <h1 className="page-title">{t('tagExplorer.title')}</h1>
-          <p className="loading-text">
-            {t('tagExplorer.subtitle')}
-          </p>
+      <div className="mainstage-inpage-toolbar">
+        <div className="page-sticky-header mainstage-inpage-toolbar-row tag-explorer-page-header">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => navigate(`/${origin}`)}
+          >
+            <ArrowLeft size={16} />
+            {t('tagExplorer.back')}
+          </button>
+          <div className="tag-explorer-page-heading">
+            <h1 className="page-title">{t('tagExplorer.title')}</h1>
+            <p className="loading-text">
+              {t('tagExplorer.subtitle')}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="tag-explorer-query-bar">
-        <div className="tag-explorer-query-tags">
-          {state.tags.map(tag => (
-            <span
-              key={`${tag.kind}:${tag.value.toLocaleLowerCase()}`}
-              className="tag-explorer-query-tag"
-              style={{
-                '--genre-color': genreColor(tag.value),
-              } as React.CSSProperties}
-            >
-              <span className="tag-explorer-query-tag__kind">
-                {tag.kind === 'genre'
-                  ? t('tagExplorer.genre')
-                  : t('tagExplorer.mood')}
+        <div className="tag-explorer-query-bar">
+          <div className="tag-explorer-query-tags">
+            {state.tags.map(tag => (
+              <span
+                key={`${tag.kind}:${tag.value.toLocaleLowerCase()}`}
+                className="tag-explorer-query-tag"
+                style={{
+                  '--genre-color': genreColor(tag.value),
+                } as React.CSSProperties}
+              >
+                <span className="tag-explorer-query-tag__kind">
+                  {tag.kind === 'genre'
+                    ? t('tagExplorer.genre')
+                    : t('tagExplorer.mood')}
+                </span>
+                {tag.value}
               </span>
-              {tag.value}
-            </span>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div
-          className="tag-explorer-mode-toggle"
-          role="group"
-          aria-label={t('tagExplorer.matchMode')}
-        >
-          <button
-            type="button"
-            className={`btn ${state.mode === 'or' ? 'btn-primary' : 'btn-ghost'}`}
-            aria-pressed={state.mode === 'or'}
-            data-benchmark-tag-explorer-mode-control="or"
-            onClick={() => updateQuery({ mode: 'or' })}
+          <div
+            className="tag-explorer-mode-toggle"
+            role="group"
+            aria-label={t('tagExplorer.matchMode')}
           >
-            {t('tagExplorer.matchAny')}
-          </button>
-          <button
-            type="button"
-            className={`btn ${state.mode === 'and' ? 'btn-primary' : 'btn-ghost'}`}
-            aria-pressed={state.mode === 'and'}
-            data-benchmark-tag-explorer-mode-control="and"
-            onClick={() => updateQuery({ mode: 'and' })}
-          >
-            {t('tagExplorer.matchAll')}
-          </button>
-        </div>
-      </div>
-
-      <div className="tag-explorer-results-toolbar">
-        <div
-          className="artist-tracks-tabs"
-          role="tablist"
-          aria-label={t('tagExplorer.resultTabs')}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={state.view === 'albums'}
-            data-benchmark-tag-explorer-view-control="albums"
-            className={`btn ${state.view === 'albums' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
-            onClick={() => updateQuery({ view: 'albums' })}
-          >
-            {t('common.albums')}
-            {resolvedAlbumTotal != null && (
-              <span className="tag-explorer-tab-count">
-                {resolvedAlbumTotal}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={state.view === 'tracks'}
-            data-benchmark-tag-explorer-view-control="tracks"
-            className={`btn ${state.view === 'tracks' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
-            onClick={() => updateQuery({ view: 'tracks' })}
-          >
-            {t('tracks.title')}
-            {resolvedTrackTotal != null && (
-              <span className="tag-explorer-tab-count">
-                {resolvedTrackTotal}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {state.view === 'tracks' && tracksReady && resolvedTrackTotal != null && (
-          <div className="tag-explorer-track-actions">
-            <span className="bulk-action-count">
-              {t('tagExplorer.selectedTracks', {
-                count: selectedTrackCount,
-              })}
-            </span>
             <button
               type="button"
-              className="btn btn-surface"
-              disabled={resolvedTrackTotal === 0}
-              onClick={() => {
-                if (trackSelection.allMatching) trackSelection.clear();
-                else trackSelection.selectAllMatching();
-              }}
+              className={`btn ${state.mode === 'or' ? 'btn-primary' : 'btn-ghost'}`}
+              aria-pressed={state.mode === 'or'}
+              data-benchmark-tag-explorer-mode-control="or"
+              onClick={() => updateQuery({ mode: 'or' })}
             >
-              {trackSelection.allMatching
-                ? t('tagExplorer.clearTrackSelection')
-                : t('tagExplorer.selectAllMatching', {
-                    count: resolvedTrackTotal,
-                  })}
+              {t('tagExplorer.matchAny')}
             </button>
-            <TagExplorerPlaylistAction
-              serverId={serverId}
-              browseScope={browseScope}
-              tags={state.tags}
-              mode={state.mode}
-              allMatching={trackSelection.allMatching}
-              exclusions={trackSelection.exclusions}
-              explicitRefs={trackSelection.explicitRefs}
-              selectedCount={selectedTrackCount}
-              disabled={!trackSelection.hasSelection}
-              onSuccess={trackSelection.clear}
-            />
+            <button
+              type="button"
+              className={`btn ${state.mode === 'and' ? 'btn-primary' : 'btn-ghost'}`}
+              aria-pressed={state.mode === 'and'}
+              data-benchmark-tag-explorer-mode-control="and"
+              onClick={() => updateQuery({ mode: 'and' })}
+            >
+              {t('tagExplorer.matchAll')}
+            </button>
           </div>
-        )}
+        </div>
+
+        <div className="tag-explorer-results-toolbar">
+          <div
+            className="artist-tracks-tabs"
+            role="tablist"
+            aria-label={t('tagExplorer.resultTabs')}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={state.view === 'albums'}
+              data-benchmark-tag-explorer-view-control="albums"
+              className={`btn ${state.view === 'albums' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              onClick={() => updateQuery({ view: 'albums' })}
+            >
+              {t('common.albums')}
+              {resolvedAlbumTotal != null && (
+                <span className="tag-explorer-tab-count">
+                  {resolvedAlbumTotal}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={state.view === 'tracks'}
+              data-benchmark-tag-explorer-view-control="tracks"
+              className={`btn ${state.view === 'tracks' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              onClick={() => updateQuery({ view: 'tracks' })}
+            >
+              {t('tracks.title')}
+              {resolvedTrackTotal != null && (
+                <span className="tag-explorer-tab-count">
+                  {resolvedTrackTotal}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {state.view === 'tracks' && tracksReady && resolvedTrackTotal != null && (
+            <div className="tag-explorer-track-actions">
+              <span className="bulk-action-count">
+                {t('tagExplorer.selectedTracks', {
+                  count: selectedTrackCount,
+                })}
+              </span>
+              <button
+                type="button"
+                className="btn btn-surface"
+                disabled={resolvedTrackTotal === 0}
+                onClick={() => {
+                  if (trackSelection.allMatching) trackSelection.clear();
+                  else trackSelection.selectAllMatching();
+                }}
+              >
+                {trackSelection.allMatching
+                  ? t('tagExplorer.clearTrackSelection')
+                  : t('tagExplorer.selectAllMatching', {
+                      count: resolvedTrackTotal,
+                    })}
+              </button>
+              <TagExplorerPlaylistAction
+                serverId={serverId}
+                browseScope={browseScope}
+                tags={state.tags}
+                mode={state.mode}
+                allMatching={trackSelection.allMatching}
+                exclusions={trackSelection.exclusions}
+                explicitRefs={trackSelection.explicitRefs}
+                selectedCount={selectedTrackCount}
+                disabled={!trackSelection.hasSelection}
+                onSuccess={trackSelection.clear}
+              />
+            </div>
+          )}
+        </div>
+
       </div>
 
-      {error && (
-        <div className="empty-state">
-          <h2>{t('tagExplorer.unavailableTitle')}</h2>
-          <p>{t('tagExplorer.unavailableMessage')}</p>
-        </div>
-      )}
-
-      {!error && state.view === 'albums' && (
-        albumsLoading && albums.length === 0 ? (
-          <div className="tag-explorer-loading">
-            <div className="spinner" />
-          </div>
-        ) : albums.length === 0 ? (
+      <OverlayScrollArea
+        className="mainstage-inpage-scroll"
+        viewportClassName="mainstage-inpage-scroll__viewport"
+        viewportId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+        viewportRef={bindScrollBody}
+        railInset="panel"
+        measureDeps={[
+          state.view,
+          state.mode,
+          albums.length,
+          songs.length,
+          albumHasMore,
+          trackHasMore,
+          albumsLoading,
+          tracksLoading,
+          albumsLoadingMore,
+          tracksLoadingMore,
+          selectedTrackCount,
+          perfFlags.disableMainstageVirtualLists,
+        ]}
+      >
+        <div className="tag-explorer-results-body">
+        {error && (
           <div className="empty-state">
-            <p>{t('tagExplorer.noAlbums')}</p>
-            {state.mode === 'and' && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => updateQuery({ mode: 'or' })}
-              >
-                {t('tagExplorer.switchToOr')}
-              </button>
-            )}
+            <h2>{t('tagExplorer.unavailableTitle')}</h2>
+            <p>{t('tagExplorer.unavailableMessage')}</p>
           </div>
-        ) : (
-          <>
-            <VirtualCardGrid
-              items={albums}
-              itemKey={album => ownedEntityKey(album)}
-              rowVariant="album"
-              disableVirtualization={perfFlags.disableMainstageVirtualLists}
-              layoutSignal={albums.length}
-              warmGridCovers={albumGridWarmCovers()}
-              renderItem={album => <AlbumCard album={album} />}
-            />
-            {albumHasMore && (
-              <InpageScrollSentinel
-                bindSentinel={bindAlbumLoadMore}
-                loading={albumsLoadingMore}
-                itemCount={albums.length}
+        )}
+
+        {!error && state.view === 'albums' && (
+          albumsLoading && albums.length === 0 ? (
+            <div className="tag-explorer-loading">
+              <div className="spinner" />
+            </div>
+          ) : albums.length === 0 ? (
+            <div className="empty-state">
+              <p>{t('tagExplorer.noAlbums')}</p>
+              {state.mode === 'and' && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => updateQuery({ mode: 'or' })}
+                >
+                  {t('tagExplorer.switchToOr')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <VirtualCardGrid
+                items={albums}
+                itemKey={album => ownedEntityKey(album)}
+                rowVariant="album"
+                disableVirtualization={perfFlags.disableMainstageVirtualLists}
+                layoutSignal={albums.length}
+                scrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+                warmGridCovers={albumGridWarmCovers()}
+                renderItem={album => (
+                  <AlbumCard
+                    album={album}
+                    observeScrollRootId={TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID}
+                  />
+                )}
               />
-            )}
-          </>
-        )
-      )}
+              {albumHasMore && (
+                <InpageScrollSentinel
+                  bindSentinel={bindAlbumLoadMore}
+                  loading={albumsLoadingMore}
+                  itemCount={albums.length}
+                />
+              )}
+            </>
+          )
+        )}
 
-      {!error && state.view === 'tracks' && (
-        tracksLoading && songs.length === 0 ? (
-          <div className="tag-explorer-loading">
-            <div className="spinner" />
-          </div>
-        ) : songs.length === 0 ? (
-          <div className="empty-state">
-            <p>{t('tagExplorer.noTracks')}</p>
-            {state.mode === 'and' && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => updateQuery({ mode: 'or' })}
-              >
-                {t('tagExplorer.switchToOr')}
-              </button>
-            )}
-          </div>
-        ) : (
-          <PagedSongList
-            songs={songs}
-            hasMore={trackHasMore}
-            loadingMore={tracksLoadingMore}
-            onLoadMore={loadMoreTracks}
-            selection={{
-              isSelected: trackSelection.isSelected,
-              onToggle: (_song, rowIndex, shift) =>
-                trackSelection.toggle(songs, rowIndex, shift),
-              label: (song, selected) =>
-                t(
-                  selected
-                    ? 'tagExplorer.deselectTrack'
-                    : 'tagExplorer.selectTrack',
-                  { title: song.title },
-                ),
-            }}
-          />
-        )
-      )}
+        {!error && state.view === 'tracks' && (
+          tracksLoading && songs.length === 0 ? (
+            <div className="tag-explorer-loading">
+              <div className="spinner" />
+            </div>
+          ) : songs.length === 0 ? (
+            <div className="empty-state">
+              <p>{t('tagExplorer.noTracks')}</p>
+              {state.mode === 'and' && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => updateQuery({ mode: 'or' })}
+                >
+                  {t('tagExplorer.switchToOr')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <PagedSongList
+                songs={songs}
+                hasMore={false}
+                loadingMore={false}
+                onLoadMore={loadMoreTracks}
+                selection={{
+                  isSelected: trackSelection.isSelected,
+                  onToggle: (_song, rowIndex, shift) =>
+                    trackSelection.toggle(songs, rowIndex, shift),
+                  label: (song, selected) =>
+                    t(
+                      selected
+                        ? 'tagExplorer.deselectTrack'
+                        : 'tagExplorer.selectTrack',
+                      { title: song.title },
+                    ),
+                }}
+              />
+              {trackHasMore && (
+                <InpageScrollSentinel
+                  bindSentinel={bindTrackLoadMore}
+                  loading={tracksLoadingMore}
+                  itemCount={songs.length}
+                  style={{ padding: '1rem', height: 'auto', margin: 0 }}
+                />
+              )}
+            </>
+          )
+        )}
 
-      {currentEmpty && state.mode === 'or' && (
-        <span className="sr-only">
-          {t('tagExplorer.noResults')}
-        </span>
-      )}
+        {currentEmpty && state.mode === 'or' && (
+          <span className="sr-only">
+            {t('tagExplorer.noResults')}
+          </span>
+        )}
+        </div>
+      </OverlayScrollArea>
     </div>
   );
 }
