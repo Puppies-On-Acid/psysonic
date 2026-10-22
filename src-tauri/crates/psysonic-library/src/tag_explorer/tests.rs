@@ -5,13 +5,7 @@ use crate::dto::{
 };
 use crate::repos::{TrackRepository, TrackRow};
 
-fn track(
-    id: &str,
-    title: &str,
-    album_id: &str,
-    genres: &[&str],
-    moods: &[&str],
-) -> TrackRow {
+fn track(id: &str, title: &str, album_id: &str, genres: &[&str], moods: &[&str]) -> TrackRow {
     TrackRow {
         server_id: "s1".into(),
         id: id.into(),
@@ -254,11 +248,15 @@ fn mixed_track_predicate_uses_both_normalized_projection_indexes() {
         .unwrap();
 
     assert!(
-        details.iter().any(|detail| detail.contains("track_genre") && detail.contains("INDEX")),
+        details
+            .iter()
+            .any(|detail| detail.contains("track_genre") && detail.contains("INDEX")),
         "genre projection was not indexed: {details:?}"
     );
     assert!(
-        details.iter().any(|detail| detail.contains("track_mood") && detail.contains("INDEX")),
+        details
+            .iter()
+            .any(|detail| detail.contains("track_mood") && detail.contains("INDEX")),
         "mood projection was not indexed: {details:?}"
     );
 }
@@ -285,11 +283,15 @@ fn collective_album_predicate_uses_browse_indexes() {
         .unwrap();
 
     assert!(
-        details.iter().any(|detail| detail.contains("idx_track_genre_browse")),
+        details
+            .iter()
+            .any(|detail| detail.contains("idx_track_genre_browse")),
         "album genre lookup was not driven by the genre browse index: {details:?}"
     );
     assert!(
-        details.iter().any(|detail| detail.contains("idx_track_mood_browse")),
+        details
+            .iter()
+            .any(|detail| detail.contains("idx_track_mood_browse")),
         "album mood lookup was not driven by the mood browse index: {details:?}"
     );
 }
