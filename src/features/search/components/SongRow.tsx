@@ -31,9 +31,24 @@ interface Props {
   cursorRowId?: string;
   /** A plain click moved the list cursor onto this row. */
   onCursorClick?: (rowIndex: number, e: React.MouseEvent) => void;
+  /** Optional bulk-selection mode. Existing callers omit this and keep normal playback clicks. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelection?: (rowIndex: number, shift: boolean) => void;
+  selectionLabel?: string;
 }
 
-function SongRow({ song, showBpm, rowIndex = 0, cursorRowId, onCursorClick }: Props) {
+function SongRow({
+  song,
+  showBpm,
+  rowIndex = 0,
+  cursorRowId,
+  onCursorClick,
+  selectionMode = false,
+  selected = false,
+  onToggleSelection,
+  selectionLabel,
+}: Props) {
   const navigateToAlbum = useNavigateToAlbum();
   const navigateToArtist = useNavigateToArtist();
   const { t } = useTranslation();
@@ -80,9 +95,16 @@ function SongRow({ song, showBpm, rowIndex = 0, cursorRowId, onCursorClick }: Pr
   return (
     <div
       id={cursorRowId}
-      className={`song-list-row${isCurrent ? ' is-current' : ''}${showBpm ? ' song-list-row--with-bpm' : ''}${showCovers ? ' song-list-row--with-cover' : ''}${cursorRowId ? ' song-list-row--cursor' : ''}`}
+      className={`song-list-row${isCurrent ? ' is-current' : ''}${showBpm ? ' song-list-row--with-bpm' : ''}${showCovers ? ' song-list-row--with-cover' : ''}${cursorRowId ? ' song-list-row--cursor' : ''}${selectionMode ? ' song-list-row--selectable' : ''}${selected ? ' bulk-selected' : ''}`}
       onClick={e => {
         if ((e.target as HTMLElement).closest('button, a, input')) return;
+        if (
+          selectionMode &&
+          (e.ctrlKey || e.metaKey || e.shiftKey)
+        ) {
+          onToggleSelection?.(rowIndex, e.shiftKey);
+          return;
+        }
         onCursorClick?.(rowIndex, e);
         // The second click of a habitual double click would restart the fade-out
         // `enqueueAndPlay` is still running, so only the first one plays.
@@ -90,6 +112,10 @@ function SongRow({ song, showBpm, rowIndex = 0, cursorRowId, onCursorClick }: Pr
       }}
       onDoubleClick={playsOnDoubleClick ? e => {
         if ((e.target as HTMLElement).closest('button, a, input')) return;
+        if (
+          selectionMode &&
+          (e.ctrlKey || e.metaKey || e.shiftKey)
+        ) return;
         handlePlay();
       } : undefined}
       onContextMenu={(e) => {
@@ -99,6 +125,18 @@ function SongRow({ song, showBpm, rowIndex = 0, cursorRowId, onCursorClick }: Pr
       onMouseDown={onRowMouseDown}
     >
       <div className="song-list-row-cell song-list-row-actions">
+        {selectionMode && (
+          <button
+            type="button"
+            className={`bulk-check song-list-row-select-check${selected ? ' checked' : ''}`}
+            aria-pressed={selected}
+            aria-label={selectionLabel}
+            onClick={e => {
+              e.stopPropagation();
+              onToggleSelection?.(rowIndex, e.shiftKey);
+            }}
+          />
+        )}
         <button
           className="song-list-row-btn song-list-row-btn--play"
           onClick={(e) => { e.stopPropagation(); handlePlay(); }}
@@ -165,11 +203,17 @@ function SongRow({ song, showBpm, rowIndex = 0, cursorRowId, onCursorClick }: Pr
 }
 
 /** Column header with the same grid as <SongRow>. Optional — pages can render it above the list. */
-export function SongListHeader({ showBpm }: { showBpm?: boolean } = {}) {
+export function SongListHeader({
+  showBpm,
+  selectionMode = false,
+}: {
+  showBpm?: boolean;
+  selectionMode?: boolean;
+} = {}) {
   const { t } = useTranslation();
   return (
     <div
-      className={`song-list-row song-list-row--header${showBpm ? ' song-list-row--with-bpm' : ''}`}
+      className={`song-list-row song-list-row--header${showBpm ? ' song-list-row--with-bpm' : ''}${selectionMode ? ' song-list-row--selectable' : ''}`}
       role="row"
     >
       <div className="song-list-row-cell song-list-row-actions" />

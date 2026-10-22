@@ -1,0 +1,117 @@
+.tag-explorer-playlist-action {
+  position: relative;
+}
+
+.tag-explorer-playlist-action > .context-submenu {
+  top: calc(100% + 4px) !important;
+  left: auto !important;
+  right: 0 !important;
+}
+
+
+.tag-explorer-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tag-explorer-page-header,
+.tag-explorer-results-toolbar,
+.tag-explorer-query-bar,
+.tag-explorer-track-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tag-explorer-page-header {
+  align-items: flex-start;
+}
+
+.tag-explorer-page-heading {
+  min-width: 0;
+}
+
+.tag-explorer-page-heading .loading-text {
+  margin: 0.25rem 0 0;
+}
+
+.tag-explorer-query-bar {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--row-divider);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.tag-explorer-query-tags {
+  display: flex;
+  flex: 1 1 320px;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag-explorer-query-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--genre-color, var(--accent)) 42%, transparent);
+  border-radius: 999px;
+  padding: 0.24rem 0.55rem;
+  background: color-mix(in srgb, var(--genre-color, var(--accent)) 9%, transparent);
+  font-size: 12px;
+}
+
+.tag-explorer-query-tag__kind {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag-explorer-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tag-explorer-results-toolbar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  min-height: 38px;
+}
+
+.tag-explorer-tab-count {
+  margin-left: 0.35rem;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-explorer-track-actions {
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.tag-explorer-loading {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+
+@media (max-width: 700px) {
+  .tag-explorer-query-bar,
+  .tag-explorer-results-toolbar,
+  .tag-explorer-track-actions {
+    align-items: stretch;
+  }
+
+  .tag-explorer-mode-toggle,
+  .tag-explorer-track-actions {
+    width: 100%;
+  }
+
+  .tag-explorer-mode-toggle > .btn {
+    flex: 1;
+  }
+}

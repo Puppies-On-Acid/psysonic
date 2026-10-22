@@ -21,6 +21,11 @@ import { useLocalPlaybackStore } from '@/store/localPlaybackStore';
 import { deriveLibraryBrowseIndexScopes } from '@/lib/library/libraryBrowseScope';
 import TagCatalogDiscoveryToolbar from '@/ui/TagCatalogDiscoveryToolbar';
 import {
+  TagExplorerSelectionBar,
+  tagExplorerTagKey,
+  useTagExplorerSelectionStore,
+} from '@/features/tagExplorer';
+import {
   consumeTagCatalogReturnState,
   filterAndSortTagCatalog,
   readTagCatalogSort,
@@ -37,6 +42,14 @@ const FONT_MAX_REM = 1.7;
 export default function Genres() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const selectionActive = useTagExplorerSelectionStore(s => s.active);
+  const selectionOrigin = useTagExplorerSelectionStore(s => s.origin);
+  const selectedTags = useTagExplorerSelectionStore(s => s.tags);
+  const beginSelection = useTagExplorerSelectionStore(s => s.begin);
+  const toggleSelection = useTagExplorerSelectionStore(s => s.toggle);
+  const removeSelection = useTagExplorerSelectionStore(s => s.remove);
+  const clearSelection = useTagExplorerSelectionStore(s => s.clear);
+  const cancelSelection = useTagExplorerSelectionStore(s => s.cancel);
   const serverId = useAuthStore(s => s.activeServerId ?? '');
   const indexEnabled = useLibraryIndexStore(s => s.isIndexEnabled(serverId));
   const musicLibraryFilterVersion = useAuthStore(s => s.musicLibraryFilterVersion);
@@ -139,6 +152,10 @@ export default function Genres() {
   }, [loading, returnState]);
 
   const handleGenreClick = (genreValue: string) => {
+    if (selectionActive) {
+      toggleSelection({ kind: 'genre', value: genreValue });
+      return;
+    }
     const el = document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID);
     storeTagCatalogReturnState(RETURN_STATE_KEY, {
       search,
@@ -148,7 +165,11 @@ export default function Genres() {
   };
 
   return (
-    <div className="content-body animate-fade-in">
+    <div
+      className="content-body animate-fade-in"
+      data-benchmark-tag-catalog="genres"
+      data-benchmark-result-count={genres.length}
+    >
       <div className="psy-page-heading psy-page-heading--spaced">
         <h1 className="page-title truncate" title={t('genres.title')}>{t('genres.title')}</h1>
         {!loading && catalogGenres.length > 0 && (
@@ -172,6 +193,31 @@ export default function Genres() {
           popularityLabel={t('genres.sortPopularity')}
           alphabeticalLabel={t('genres.sortAlphabetical')}
           sortTooltip={t('genres.sortTooltip')}
+          benchmarkKind="genres"
+          selectionMode={selectionActive}
+          onToggleSelectionMode={() => {
+            if (selectionActive) cancelSelection();
+            else beginSelection('genres');
+          }}
+          selectLabel={t('genres.selectTags')}
+          cancelSelectionLabel={t('genres.cancelSelection')}
+        />
+      )}
+
+      {selectionActive && (
+        <TagExplorerSelectionBar
+          origin={selectionOrigin ?? 'genres'}
+          tags={selectedTags}
+          onRemove={removeSelection}
+          onClear={clearSelection}
+          onCancel={cancelSelection}
+          selectedCountLabel={t('genres.selectedTagCount', { count: selectedTags.length })}
+          clearLabel={t('genres.clearSelection')}
+          cancelLabel={t('genres.cancelSelection')}
+          viewResultsLabel={t('genres.viewResults')}
+          minimumLabel={t('genres.selectionMinimum')}
+          genreLabel={t('genres.genreTagLabel')}
+          moodLabel={t('genres.moodTagLabel')}
         />
       )}
 
@@ -191,7 +237,14 @@ export default function Genres() {
               <button
                 key={genre.value}
                 type="button"
-                className="genre-pill"
+                className={`genre-pill${selectionActive && selectedTags.some(
+                  tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'genre', value: genre.value }),
+                ) ? ' genre-pill--selected' : ''}`}
+                aria-pressed={selectionActive
+                  ? selectedTags.some(
+                      tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'genre', value: genre.value }),
+                    )
+                  : undefined}
                 style={{
                   '--genre-color': color,
                   fontSize: `${fontRem.toFixed(3)}rem`,

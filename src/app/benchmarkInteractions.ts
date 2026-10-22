@@ -374,6 +374,142 @@ async function runPaginationInteraction(
   });
 }
 
+async function runTagExplorerInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = '[data-benchmark-tag-explorer-view]';
+  const albumsControl =
+    '[data-benchmark-tag-explorer-view-control="albums"]';
+  const tracksControl =
+    '[data-benchmark-tag-explorer-view-control="tracks"]';
+  const orControl =
+    '[data-benchmark-tag-explorer-mode-control="or"]';
+  const andControl =
+    '[data-benchmark-tag-explorer-mode-control="and"]';
+  const results: BenchmarkInteractionResult[] = [];
+
+  const wait = (
+    view: 'albums' | 'tracks',
+    mode: 'or' | 'and',
+  ) => waitForCondition(() => {
+    const root = document.querySelector<HTMLElement>(rootSelector);
+    return root?.getAttribute('data-benchmark-tag-explorer-view') === view
+      && root.getAttribute('data-benchmark-tag-explorer-mode') === mode
+      && root.getAttribute('data-benchmark-loading') === 'false';
+  });
+
+  const ensure = async (
+    view: 'albums' | 'tracks',
+    mode: 'or' | 'and',
+  ): Promise<boolean> => {
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-tag-explorer-mode',
+      ) !== mode
+    ) {
+      if (!click(mode === 'or' ? orControl : andControl)) return false;
+    }
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-tag-explorer-view',
+      ) !== view
+    ) {
+      if (!click(view === 'albums' ? albumsControl : tracksControl)) {
+        return false;
+      }
+    }
+    return wait(view, mode);
+  };
+
+  try {
+    if (await ensure('albums', 'or')) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:explorer-albums-next-page',
+        ),
+      );
+    }
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-albums',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('albums', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    await ensure('albums', 'or');
+
+    results.push(await measureInteraction(
+      'view:explorer-tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer Tracks tab unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'or');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    if (await ensure('tracks', 'or')) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:explorer-tracks-next-page',
+        ),
+      );
+    }
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-tracks',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+  } finally {
+    await ensure('albums', 'or');
+  }
+
+  return results;
+}
+
 async function runGenreDetailInteractions(
   route: string,
 ): Promise<BenchmarkInteractionResult[]> {
@@ -462,6 +598,12 @@ export async function runBenchmarkInteractions(
   if (path === '/search/advanced') {
     const search = await runSearchInteraction(searchQuery);
     return [search, await runPaginationInteraction(route)];
+  }
+  if (
+    path === '/genres/explore/results'
+    || path === '/moods/explore/results'
+  ) {
+    return runTagExplorerInteractions(route);
   }
   if (/^\/genres\/[^/]+$/.test(path)) {
     return runGenreDetailInteractions(route);
