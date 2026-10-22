@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Track } from '@/lib/media/trackTypes';
 
 type SidebarTab = 'queue' | 'lyrics' | 'info';
 
@@ -8,6 +9,9 @@ interface LyricsState {
   showLyrics: () => void;
   showQueue: () => void;
   showInfo: () => void;
+  dialogTrack: Track | null;
+  openLyricsDialog: (track: Track) => void;
+  closeLyricsDialog: () => void;
 }
 
 export const useLyricsStore = create<LyricsState>()((set) => ({
@@ -16,4 +20,7 @@ export const useLyricsStore = create<LyricsState>()((set) => ({
   showLyrics: () => set({ activeTab: 'lyrics' }),
   showQueue: () => set({ activeTab: 'queue' }),
   showInfo: () => set({ activeTab: 'info' }),
+  dialogTrack: null,
+  openLyricsDialog: (track) => set({ dialogTrack: track }),
+  closeLyricsDialog: () => set({ dialogTrack: null }),
 }));

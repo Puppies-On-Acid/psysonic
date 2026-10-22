@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Play, ListPlus, ListStart, Radio, Heart, ChevronRight, ChevronsRight, User, Disc3, ListMusic, Info, Sparkles, Star, Trash2, HeartCrack, Flame, Orbit as OrbitIcon } from 'lucide-react';
+import { Play, ListPlus, ListStart, Radio, Heart, ChevronRight, ChevronsRight, User, Disc3, ListMusic, Info, ScrollText, Sparkles, Star, Trash2, HeartCrack, Flame, Orbit as OrbitIcon } from 'lucide-react';
 import { useNavigateToAlbum } from '@/features/album';
 import { useNavigateToArtist } from '@/features/artist';
 import { resolveAlbum, resolveMediaServerId } from '@/features/offline';
@@ -8,6 +8,7 @@ import { getMusicNetworkRuntime } from '@/music-network';
 import { renderPresetIcon, useEnrichmentPrimary } from '@/music-network/ui';
 import type { Track } from '@/lib/media/trackTypes';
 import { useAuthStore } from '@/store/authStore';
+import { useLyricsStore } from '@/store/lyricsStore';
 import { songToTrack } from '@/lib/media/songToTrack';
 import { showToast } from '@/lib/dom/toast';
 import { suggestOrbitTrack, hostEnqueueToOrbit, evaluateOrbitSuggestGate, OrbitSuggestBlockedError } from '@/features/orbit';
@@ -218,6 +219,9 @@ export default function SongContextItems(props: ContextMenuItemsProps) {
               <div className="context-menu-item" onClick={() => handleAction(() => openSongInfo(song.id, song.serverId))}>
                 <Info size={14} /> {t('contextMenu.songInfo')}
               </div>
+              <div className="context-menu-item" onClick={() => handleAction(() => useLyricsStore.getState().openLyricsDialog(song))}>
+                <ScrollText size={14} /> {t('contextMenu.viewLyrics')}
+              </div>
               {offlinePolicy.canEditPlaylist && playlistId && playlistSongIndex !== undefined && playlistSongRemove && (
                 <div className="context-menu-item" style={{ color: 'var(--danger)' }} onClick={() => handleAction(async () => {
                   const { showToast } = await import('@/lib/dom/toast');
@@ -381,6 +385,9 @@ export default function SongContextItems(props: ContextMenuItemsProps) {
               />
               <div className="context-menu-item" onClick={() => handleAction(() => openSongInfo(song.id, song.serverId))}>
                 <Info size={14} /> {t('contextMenu.songInfo')}
+              </div>
+              <div className="context-menu-item" onClick={() => handleAction(() => useLyricsStore.getState().openLyricsDialog(song))}>
+                <ScrollText size={14} /> {t('contextMenu.viewLyrics')}
               </div>
               {offlinePolicy.canFavorite && (
                 <>
