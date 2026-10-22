@@ -149,28 +149,44 @@ export function useTagExplorerBrowse(
   musicLibraryFilterVersion: number,
   browseScope: LibraryBrowseScope,
 ) {
-  const syncServerIds = browseScope.serverIds.length > 0
-    ? browseScope.serverIds
-    : serverId
-      ? [serverId]
-      : [];
+  // Query inputs may be rebuilt on every render. Preserve references while
+  // their values are unchanged so effects do not restart the same request.
+  const tagsKey = JSON.stringify(tags);
+  const queryTags = useMemo(
+    () => JSON.parse(tagsKey) as LibraryTagFilter[],
+    [tagsKey],
+  );
+  const scopeKey = JSON.stringify(browseScope);
+  const queryScope = useMemo(
+    () => JSON.parse(scopeKey) as LibraryBrowseScope,
+    [scopeKey],
+  );
+
+  const syncServerIds = useMemo(
+    () => queryScope.serverIds.length > 0
+      ? queryScope.serverIds
+      : serverId
+        ? [serverId]
+        : [],
+    [queryScope, serverId],
+  );
   const syncRevision = useLibraryScopeSyncRevision(syncServerIds);
   const key = useMemo(
     () => queryKey(
       serverId,
-      tags,
+      queryTags,
       mode,
       musicLibraryFilterVersion,
       syncRevision,
-      browseScope,
+      queryScope,
     ),
     [
       serverId,
-      tags,
+      queryTags,
       mode,
       musicLibraryFilterVersion,
       syncRevision,
-      browseScope,
+      queryScope,
     ],
   );
 
@@ -232,7 +248,7 @@ export function useTagExplorerBrowse(
       setTrackError(null);
     }
 
-    if (!serverId || tags.length < 2) {
+    if (!serverId || queryTags.length < 2) {
       // An invalid query must clear stale loading state immediately.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAlbumsLoading(false);
@@ -259,13 +275,13 @@ export function useTagExplorerBrowse(
       setAlbumError(null);
 
       void (async () => {
-        if (!(await waitForReady(browseScope, serverId))) {
+        if (!(await waitForReady(queryScope, serverId))) {
           throw new Error('library index is not ready');
         }
         const response = await libraryTagExplorerAlbums({
           serverId,
-          libraryScopes: browseScope.pairs,
-          tags: [...tags],
+          libraryScopes: queryScope.pairs,
+          tags: [...queryTags],
           mode,
           limit: TAG_EXPLORER_ALBUM_PAGE_SIZE,
           offset: 0,
@@ -311,13 +327,13 @@ export function useTagExplorerBrowse(
       setTrackError(null);
 
       void (async () => {
-        if (!(await waitForReady(browseScope, serverId))) {
+        if (!(await waitForReady(queryScope, serverId))) {
           throw new Error('library index is not ready');
         }
         const response = await libraryTagExplorerTracks({
           serverId,
-          libraryScopes: browseScope.pairs,
-          tags: [...tags],
+          libraryScopes: queryScope.pairs,
+          tags: [...queryTags],
           mode,
           limit: TAG_EXPLORER_TRACK_PAGE_SIZE,
           offset: 0,
@@ -354,11 +370,11 @@ export function useTagExplorerBrowse(
     };
   }, [
     activeView,
-    browseScope,
+    queryScope,
     key,
     mode,
     serverId,
-    tags,
+    queryTags,
   ]);
 
   const loadMoreAlbums = useCallback(() => {
@@ -376,8 +392,8 @@ export function useTagExplorerBrowse(
 
     void libraryTagExplorerAlbums({
       serverId,
-      libraryScopes: browseScope.pairs,
-      tags: [...tags],
+      libraryScopes: queryScope.pairs,
+      tags: [...queryTags],
       mode,
       limit: TAG_EXPLORER_ALBUM_PAGE_SIZE,
       offset,
@@ -412,11 +428,11 @@ export function useTagExplorerBrowse(
     albumHasMore,
     albums.length,
     albumsReady,
-    browseScope,
+    queryScope,
     key,
     mode,
     serverId,
-    tags,
+    queryTags,
   ]);
 
   const loadMoreTracks = useCallback(() => {
@@ -434,8 +450,8 @@ export function useTagExplorerBrowse(
 
     void libraryTagExplorerTracks({
       serverId,
-      libraryScopes: browseScope.pairs,
-      tags: [...tags],
+      libraryScopes: queryScope.pairs,
+      tags: [...queryTags],
       mode,
       limit: TAG_EXPLORER_TRACK_PAGE_SIZE,
       offset,
@@ -467,12 +483,12 @@ export function useTagExplorerBrowse(
       }
     });
   }, [
-    browseScope,
+    queryScope,
     key,
     mode,
     serverId,
     songs.length,
-    tags,
+    queryTags,
     trackHasMore,
     tracksReady,
   ]);

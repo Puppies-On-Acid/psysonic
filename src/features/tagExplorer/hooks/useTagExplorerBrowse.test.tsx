@@ -77,7 +77,7 @@ describe('useTagExplorerBrowse', () => {
           101,
           scope,
         ),
-      { initialProps: { activeView: 'albums' as const } },
+      { initialProps: { activeView: 'albums' as 'albums' | 'tracks' } },
     );
 
     await waitFor(() =>
@@ -150,7 +150,7 @@ describe('useTagExplorerBrowse', () => {
           104,
           scope,
         ),
-      { initialProps: { activeView: 'albums' as const } },
+      { initialProps: { activeView: 'albums' as 'albums' | 'tracks' } },
     );
 
     await waitFor(() =>
@@ -167,6 +167,104 @@ describe('useTagExplorerBrowse', () => {
 
     expect(hoisted.albums).toHaveBeenCalledTimes(1);
     expect(hoisted.tracks).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restart requests for equivalent tag and scope values', async () => {
+    hoisted.albums.mockResolvedValue({
+      albums: [{ id: 'a-stable', serverId: 's1', name: 'Stable Album' }],
+      hasMore: false,
+      total: 1,
+      source: 'local',
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useTagExplorerBrowse(
+        's1',
+        [
+          { kind: 'genre', value: 'Stable Genre' },
+          { kind: 'mood', value: 'Stable Mood' },
+        ],
+        'or',
+        'albums',
+        201,
+        {
+          ...scope,
+          serverIds: ['s1'],
+          pairs: [{ serverId: 's1', libraryId: null }],
+        },
+      ),
+    );
+
+    await waitFor(() => expect(result.current.albumsReady).toBe(true));
+    rerender();
+    rerender();
+    expect(hoisted.albums).toHaveBeenCalledTimes(1);
+    expect(result.current.albums[0]?.id).toBe('a-stable');
+  });
+
+  it('refetches when inline tag values change', async () => {
+    hoisted.tracks.mockImplementation(
+      ({ tags: requested }: { tags: typeof tags }) => Promise.resolve({
+        tracks: [{ id: requested[0].value, serverId: 's1', title: 'Track' }],
+        hasMore: false,
+        total: 1,
+        source: 'local',
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ genre }: { genre: string }) =>
+        useTagExplorerBrowse(
+          's1',
+          [
+            { kind: 'genre', value: genre },
+            { kind: 'mood', value: 'Changing Mood' },
+          ],
+          'or',
+          'tracks',
+          202,
+          scope,
+        ),
+      { initialProps: { genre: 'Rock' } },
+    );
+
+    await waitFor(() => expect(result.current.songs[0]?.id).toBe('Rock'));
+    rerender({ genre: 'Jazz' });
+    await waitFor(() => expect(result.current.songs[0]?.id).toBe('Jazz'));
+    expect(hoisted.tracks).toHaveBeenCalledTimes(2);
+  });
+
+  it('refetches when the selected library folder changes', async () => {
+    hoisted.albums.mockResolvedValue({
+      albums: [],
+      hasMore: false,
+      total: 0,
+      source: 'local',
+    });
+
+    const { rerender } = renderHook(
+      ({ libraryId }: { libraryId: string | null }) =>
+        useTagExplorerBrowse(
+          's1',
+          tags,
+          'or',
+          'albums',
+          203,
+          {
+            ...scope,
+            pairs: [{ serverId: 's1', libraryId }],
+            fingerprint: JSON.stringify([['s1', [libraryId]]]),
+          },
+        ),
+      { initialProps: { libraryId: null as string | null } },
+    );
+
+    await waitFor(() => expect(hoisted.albums).toHaveBeenCalledTimes(1));
+    rerender({ libraryId: 'music-1' });
+    await waitFor(() => expect(hoisted.albums).toHaveBeenCalledTimes(2));
+    expect(hoisted.albums.mock.calls[1]?.[0].libraryScopes).toEqual([
+      { serverId: 's1', libraryId: 'music-1' },
+    ]);
   });
 
 });
