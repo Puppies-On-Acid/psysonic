@@ -45,10 +45,16 @@ vi.mock('@/ui/VirtualCardGrid', () => ({
   VirtualCardGrid: ({
     items,
     renderItem,
+    scrollRootId,
   }: {
     items: Array<{ id: string }>;
     renderItem: (item: { id: string; name: string }) => React.ReactNode;
-  }) => <div>{items.map(item => <div key={item.id}>{renderItem(item as never)}</div>)}</div>,
+    scrollRootId?: string;
+  }) => (
+    <div data-scroll-root-id={scrollRootId}>
+      {items.map(item => <div key={item.id}>{renderItem(item as never)}</div>)}
+    </div>
+  ),
 }));
 
 import TagExplorerResultsPage from './TagExplorerResultsPage';
@@ -180,16 +186,22 @@ describe('TagExplorerResultsPage', () => {
   it('rejects direct result URLs with fewer than two distinct tags', () => {
     renderPage('?tag=genre%3ARock');
 
-    expect(
-      screen.getByText('Choose at least two tags'),
-    ).toBeInTheDocument();
+    const message = screen.getByText('Choose at least two tags');
+    expect(message).toBeInTheDocument();
+    expect(document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID))
+      .toContainElement(message);
   });
   it('keeps Explorer controls outside the results scroller', () => {
     renderPage('?tag=genre%3ARock&tag=mood%3ADreamy');
 
     const scrollViewport = document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID);
     expect(scrollViewport).not.toBeNull();
-    expect(within(scrollViewport!).getByText('Album One')).toBeInTheDocument();
+    const albumLabel = within(scrollViewport!).getByText('Album One');
+    expect(albumLabel).toBeInTheDocument();
+    expect(albumLabel.closest('[data-scroll-root-id]')).toHaveAttribute(
+      'data-scroll-root-id',
+      TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID,
+    );
 
     const toolbar = document.querySelector(
       '.tag-explorer-results > .mainstage-inpage-toolbar',
@@ -229,6 +241,9 @@ describe('TagExplorerResultsPage', () => {
       screen.getByRole('button', { name: /Select all 1 matching tracks/i }),
     );
     expect(toolbar).toContainElement(screen.getByText('Playlist action'));
+    const scrollViewport = document.getElementById(TAG_EXPLORER_INPAGE_SCROLL_VIEWPORT_ID);
+    expect(within(scrollViewport!).getByText('Track One')).toBeInTheDocument();
+    expect(scrollViewport).not.toContainElement(toolbar);
   });
 
 });
