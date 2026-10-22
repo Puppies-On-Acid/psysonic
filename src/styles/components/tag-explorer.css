@@ -130,6 +130,9 @@
 }
 
 .tag-explorer-results .page-sticky-header.tag-explorer-page-header {
+  /* Shared toolbar rows justify space-between; Explorer's title belongs beside Back. */
+  justify-content: flex-start;
+  align-items: center;
   margin: 0;
   padding: var(--space-2) 0;
 }
