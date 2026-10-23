@@ -122,8 +122,10 @@ export default function AppRoutes() {
       <Route path="/help" element={<Help />} />
       <Route path="/offline" element={<OfflineLibrary />} />
       <Route path="/genres" element={<Genres />} />
+      <Route path="/genres/explore/results" element={<TagExplorerResultsPage />} />
       <Route path="/genres/:name" element={<GenreDetail />} />
       <Route path="/moods" element={<Moods />} />
+      <Route path="/moods/explore/results" element={<TagExplorerResultsPage />} />
       <Route path="/moods/:name" element={<MoodDetail />} />
       <Route path="/playlists" element={<Playlists />} />
       <Route path="/playlists/:id" element={<PlaylistDetail />} />

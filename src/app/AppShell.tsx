@@ -14,6 +14,7 @@ import DevNetworkModeToggle from '@/app/DevNetworkModeToggle';
 import { NowPlayingDropdown } from '@/features/nowPlaying';
 import QueuePanel from '@/features/queue';
 import AppRoutes from './AppRoutes';
+import { SongLyricsModal } from '@/features/lyrics';
 import FullscreenPlayer, { FullscreenPlayerImmersive, FullscreenPlayerPrism, useFsAutoOpen } from '@/features/fullscreenPlayer';
 import ContextMenu from '@/features/contextMenu/components/ContextMenu';
 import SongInfoModal from '@/features/playback/components/SongInfoModal';
@@ -328,6 +329,7 @@ export function AppShell() {
                 <div style={{ minHeight: '60vh' }} />
               ) : (
                 <AppRoutes />
+      <SongLyricsModal />
               )}
             </Suspense>
           </OverlayScrollArea>
