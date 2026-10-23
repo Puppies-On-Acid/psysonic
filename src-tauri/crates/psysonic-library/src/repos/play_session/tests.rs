@@ -100,6 +100,21 @@ fn row_with_id_hash(server: &str, id: &str, hash: &str, path: &str) -> TrackRow 
     }
 }
 
+// Listening-history queries group timestamps using SQLite's localtime modifier.
+// Create test instants at local noon so calendar assertions are stable in any
+// timezone, including locations west of UTC at the Unix epoch boundary.
+fn local_noon_ms(store: &LibraryStore, date_iso: &str) -> i64 {
+    store
+        .with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT CAST(strftime('%s', ?1 || ' 12:00:00', 'utc') AS INTEGER) * 1000",
+                [date_iso],
+                |row| row.get(0),
+            )
+        })
+        .expect("convert local noon to epoch milliseconds")
+}
+
 fn sample_input(server_id: &str, track_id: &str) -> PlaySessionInputDto {
     PlaySessionInputDto {
         server_id: server_id.into(),

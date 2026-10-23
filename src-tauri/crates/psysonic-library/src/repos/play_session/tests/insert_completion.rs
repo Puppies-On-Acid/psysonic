@@ -28,12 +28,13 @@ fn insert_fails_when_track_missing() {
 fn insert_full_vs_partial_completion() {
     let store = LibraryStore::open_in_memory();
     seed_track(&store, "s1", "t1", 100);
+    let started_at_ms = local_noon_ms(&store, "1970-01-02");
     let repo = PlaySessionRepository::new(&store);
 
     repo.insert(&PlaySessionInputDto {
         server_id: "s1".into(),
         track_id: "t1".into(),
-        started_at_ms: 1_000,
+        started_at_ms,
         listened_sec: 80.0,
         position_max_sec: 75.0,
         end_reason: "ended".into(),
@@ -44,7 +45,7 @@ fn insert_full_vs_partial_completion() {
     repo.insert(&PlaySessionInputDto {
         server_id: "s1".into(),
         track_id: "t1".into(),
-        started_at_ms: 2_000,
+        started_at_ms: started_at_ms + 1_000,
         listened_sec: 30.0,
         position_max_sec: 40.0,
         end_reason: "skip".into(),
@@ -65,11 +66,12 @@ fn insert_full_vs_partial_completion() {
 fn zero_index_duration_uses_hint_and_stays_partial() {
     let store = LibraryStore::open_in_memory();
     seed_track(&store, "s1", "t1", 0);
+    let started_at_ms = local_noon_ms(&store, "1970-01-02");
     let repo = PlaySessionRepository::new(&store);
     repo.insert(&PlaySessionInputDto {
         server_id: "s1".into(),
         track_id: "t1".into(),
-        started_at_ms: 1_000,
+        started_at_ms,
         listened_sec: 45.0,
         position_max_sec: 40.0,
         end_reason: "skip".into(),
@@ -77,7 +79,7 @@ fn zero_index_duration_uses_hint_and_stays_partial() {
     })
     .expect("insert");
 
-    let detail = repo.day_detail("1970-01-01").expect("detail");
+    let detail = repo.day_detail("1970-01-02").expect("detail");
     assert_eq!(detail.tracks[0].completion, "partial");
 }
 
@@ -85,11 +87,12 @@ fn zero_index_duration_uses_hint_and_stays_partial() {
 fn zero_duration_without_hint_is_partial_not_full() {
     let store = LibraryStore::open_in_memory();
     seed_track(&store, "s1", "t1", 0);
+    let started_at_ms = local_noon_ms(&store, "1970-01-02");
     let repo = PlaySessionRepository::new(&store);
     repo.insert(&PlaySessionInputDto {
         server_id: "s1".into(),
         track_id: "t1".into(),
-        started_at_ms: 1_000,
+        started_at_ms,
         listened_sec: 45.0,
         position_max_sec: 40.0,
         end_reason: "skip".into(),
@@ -97,7 +100,7 @@ fn zero_duration_without_hint_is_partial_not_full() {
     })
     .expect("insert");
 
-    let detail = repo.day_detail("1970-01-01").expect("detail");
+    let detail = repo.day_detail("1970-01-02").expect("detail");
     assert_eq!(detail.tracks[0].completion, "partial");
 }
 
@@ -105,11 +108,12 @@ fn zero_duration_without_hint_is_partial_not_full() {
 fn corrupt_short_db_duration_prefers_player_hint() {
     let store = LibraryStore::open_in_memory();
     seed_track(&store, "s1", "t1", 1);
+    let started_at_ms = local_noon_ms(&store, "1970-01-02");
     let repo = PlaySessionRepository::new(&store);
     repo.insert(&PlaySessionInputDto {
         server_id: "s1".into(),
         track_id: "t1".into(),
-        started_at_ms: 1_000,
+        started_at_ms,
         listened_sec: 45.0,
         position_max_sec: 40.0,
         end_reason: "skip".into(),
@@ -117,6 +121,6 @@ fn corrupt_short_db_duration_prefers_player_hint() {
     })
     .expect("insert");
 
-    let detail = repo.day_detail("1970-01-01").expect("detail");
+    let detail = repo.day_detail("1970-01-02").expect("detail");
     assert_eq!(detail.tracks[0].completion, "partial");
 }

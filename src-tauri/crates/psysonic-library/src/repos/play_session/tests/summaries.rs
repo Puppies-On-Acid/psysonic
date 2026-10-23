@@ -67,8 +67,8 @@ fn year_bounds_empty_and_populated() {
         })
         .expect("insert");
     };
-    insert(1_577_836_800_000, "t1");
-    insert(1_609_459_200_000, "t2");
+    insert(local_noon_ms(&store, "2020-01-01"), "t1");
+    insert(local_noon_ms(&store, "2021-01-01"), "t2");
 
     let bounds = repo.year_bounds().expect("bounds");
     assert_eq!(bounds.min_year, Some(2020));
@@ -93,8 +93,8 @@ fn recent_days_newest_first_with_limit() {
         })
         .expect("insert");
     };
-    insert(1_577_836_800_000, "t1");
-    insert(1_609_459_200_000, "t2");
+    insert(local_noon_ms(&store, "2020-01-01"), "t1");
+    insert(local_noon_ms(&store, "2021-01-01"), "t2");
 
     let days = repo.recent_days(30).expect("recent");
     assert_eq!(days.len(), 2);
