@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Hangulati találatok",
   tracksEmpty: "Nem találhatók számok ehhez a hangulathoz.",
   back: 'Vissza',
+  selectTags: 'Kiválasztás',
+  cancelSelection: 'Mégse',
+  clearSelection: 'Törlés',
+  selectedTagCount_one: '{{count}} címke kiválasztva',
+  selectedTagCount_other: '{{count}} címke kiválasztva',
+  selectionMinimum: 'Válassz legalább két címkét a kombinált eredményekhez.',
+  viewResults: 'Eredmények megtekintése',
+  genreTagLabel: 'Műfaj',
+  moodTagLabel: 'Hangulat',
 };
