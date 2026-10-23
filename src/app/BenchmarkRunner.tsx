@@ -115,7 +115,17 @@ function waitForPath(route: string, timeoutMs: number): Promise<number> {
   });
 }
 
+function isTagExplorerBenchmarkRoute(route: string): boolean {
+  const path = new URL(route, window.location.origin).pathname;
+  return path === '/genres/explore/results'
+    || path === '/moods/explore/results';
+}
+
 function semanticRouteReady(route: string): boolean {
+  if (isTagExplorerBenchmarkRoute(route)) {
+    const root = document.querySelector<HTMLElement>('[data-benchmark-tag-explorer-view]');
+    return root?.getAttribute('data-benchmark-loading') === 'false';
+  }
   if (route.startsWith('/moods/')) {
     return benchmarkMoodDetailReady(route, document.querySelector('[data-benchmark-mood-name]'));
   }
@@ -140,6 +150,15 @@ function currentRoute(): string {
 }
 
 function routeReadinessDetails(route: string): unknown {
+  if (isTagExplorerBenchmarkRoute(route)) {
+    const root = document.querySelector<HTMLElement>('[data-benchmark-tag-explorer-view]');
+    return root ? {
+      view: root.getAttribute('data-benchmark-tag-explorer-view'),
+      mode: root.getAttribute('data-benchmark-tag-explorer-mode'),
+      loading: root.getAttribute('data-benchmark-loading'),
+      resultCount: root.getAttribute('data-benchmark-result-count'),
+    } : { state: 'Explorer root unavailable' };
+  }
   if (route.startsWith('/moods/')) {
     const root = document.querySelector('[data-benchmark-mood-name]');
     return {
