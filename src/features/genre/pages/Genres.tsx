@@ -19,25 +19,37 @@ import { useOfflineLocalBrowseReloadKey } from '@/store/localPlaybackBrowseRevis
 import { useLibrarySyncRevision } from '@/store/offlineLocalLibrarySyncRevision';
 import { useLocalPlaybackStore } from '@/store/localPlaybackStore';
 import { deriveLibraryBrowseIndexScopes } from '@/lib/library/libraryBrowseScope';
-import TagCatalogToolbar, { type TagCatalogSort } from '@/ui/TagCatalogToolbar';
-import { readTagCatalogReturnState, tagCatalogPopularityLog, type CatalogReturnState } from '@/lib/library/tagCatalogSession';
+import TagCatalogDiscoveryToolbar from '@/ui/TagCatalogDiscoveryToolbar';
+import {
+  TagExplorerSelectionBar,
+  tagExplorerTagKey,
+  useTagExplorerSelectionStore,
+} from '@/features/tagExplorer';
+import {
+  consumeTagCatalogReturnState,
+  filterAndSortTagCatalog,
+  readTagCatalogSort,
+  storeTagCatalogReturnState,
+  writeTagCatalogSort,
+  type TagCatalogSort,
+} from '@/lib/library/tagCatalogDiscovery';
 
 const RETURN_STATE_KEY = 'genres-return-state';
 const SORT_KEY = 'genres-sort';
 const FONT_MIN_REM = 0.78;
 const FONT_MAX_REM = 1.7;
 
-function readSort(): TagCatalogSort {
-  return sessionStorage.getItem(SORT_KEY) === 'alphabetical'
-    ? 'alphabetical'
-    : 'popularity';
-}
-
 export default function Genres() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [search, setSearch] = useState(() => readTagCatalogReturnState(RETURN_STATE_KEY)?.search ?? '');
-  const [sort, setSort] = useState<TagCatalogSort>(readSort);
+  const selectionActive = useTagExplorerSelectionStore(s => s.active);
+  const selectionOrigin = useTagExplorerSelectionStore(s => s.origin);
+  const selectedTags = useTagExplorerSelectionStore(s => s.tags);
+  const beginSelection = useTagExplorerSelectionStore(s => s.begin);
+  const toggleSelection = useTagExplorerSelectionStore(s => s.toggle);
+  const removeSelection = useTagExplorerSelectionStore(s => s.remove);
+  const clearSelection = useTagExplorerSelectionStore(s => s.clear);
+  const cancelSelection = useTagExplorerSelectionStore(s => s.cancel);
   const serverId = useAuthStore(s => s.activeServerId ?? '');
   const indexEnabled = useLibraryIndexStore(s => s.isIndexEnabled(serverId));
   const musicLibraryFilterVersion = useAuthStore(s => s.musicLibraryFilterVersion);
@@ -53,6 +65,9 @@ export default function Genres() {
   );
   const skipGenreCatalogCache = offlineBrowseActive
     && offlineLocalBrowseEnabled(serverId, localPlaybackEntries);
+  const [returnState] = useState(() => consumeTagCatalogReturnState(RETURN_STATE_KEY));
+  const [search, setSearch] = useState(returnState?.search ?? '');
+  const [sort, setSort] = useState<TagCatalogSort>(() => readTagCatalogSort(SORT_KEY));
   const cachedGenres = !offlineBrowseActive
     ? peekScopedGenreCatalog(selectedIndexScopes, true)
     : serverId && !skipGenreCatalogCache
@@ -109,50 +124,43 @@ export default function Genres() {
     () => filterGenresWithContent([...rawGenres]),
     [rawGenres],
   );
+  const genres = useMemo(
+    () => filterAndSortTagCatalog(catalogGenres, search, sort),
+    [catalogGenres, search, sort],
+  );
 
-  const searchActive = search.trim().length > 0;
-  const genres = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    const filtered = query
-      ? catalogGenres.filter(genre => genre.value.toLocaleLowerCase().includes(query))
-      : [...catalogGenres];
-
-    return filtered.sort((a, b) => (
-      sort === 'alphabetical'
-        ? a.value.localeCompare(b.value)
-        : b.albumCount - a.albumCount || a.value.localeCompare(b.value)
-    ));
-  }, [catalogGenres, search, sort]);
-
-  // Keep popularity sizing stable when search/sort changes: filtering should
-  // move/hide pills, not make the remaining ones suddenly grow.
-  const maxLog = useMemo(() => tagCatalogPopularityLog(catalogGenres), [catalogGenres]);
+  // Keep pill size tied to library prevalence even when the visible order is
+  // alphabetical or a search narrows the cloud.
+  const maxLog = useMemo(() => {
+    const maxAlbumCount = catalogGenres.reduce(
+      (max, genre) => Math.max(max, genre.albumCount),
+      2,
+    );
+    return Math.log(maxAlbumCount);
+  }, [catalogGenres]);
 
   useEffect(() => {
-    if (loading) return;
-    const saved = readTagCatalogReturnState(RETURN_STATE_KEY);
-    if (!saved) return;
-    sessionStorage.removeItem(RETURN_STATE_KEY);
+    writeTagCatalogSort(SORT_KEY, sort);
+  }, [sort]);
+
+  useEffect(() => {
+    if (loading || !returnState) return;
     requestAnimationFrame(() => {
       const el = document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID);
-      if (el) el.scrollTop = saved.scrollTop;
+      if (el) el.scrollTop = returnState.scrollTop;
     });
-  }, [loading]);
-
-  const handleSortChange = (next: TagCatalogSort) => {
-    setSort(next);
-    sessionStorage.setItem(SORT_KEY, next);
-  };
+  }, [loading, returnState]);
 
   const handleGenreClick = (genreValue: string) => {
+    if (selectionActive) {
+      toggleSelection({ kind: 'genre', value: genreValue });
+      return;
+    }
     const el = document.getElementById(APP_MAIN_SCROLL_VIEWPORT_ID);
-    sessionStorage.setItem(
-      RETURN_STATE_KEY,
-      JSON.stringify({
-        search,
-        scrollTop: el?.scrollTop ?? 0,
-      } satisfies CatalogReturnState),
-    );
+    storeTagCatalogReturnState(RETURN_STATE_KEY, {
+      search,
+      scrollTop: el?.scrollTop ?? 0,
+    });
     navigate(`/genres/${encodeURIComponent(genreValue)}`, { state: { returnTo: '/genres' } });
   };
 
@@ -167,7 +175,7 @@ export default function Genres() {
         {!loading && catalogGenres.length > 0 && (
           <span className="psy-page-heading__count">
             <span aria-hidden="true">–</span>
-            {searchActive
+            {search.trim()
               ? t('genres.filteredCount', { visible: genres.length, total: catalogGenres.length })
               : `${catalogGenres.length} ${t('genres.genreCount')}`}
           </span>
@@ -175,24 +183,48 @@ export default function Genres() {
       </div>
 
       {!loading && catalogGenres.length > 0 && (
-        <TagCatalogToolbar
-          query={search}
-          onQueryChange={setSearch}
-          sort={sort}
-          onSortChange={handleSortChange}
+        <TagCatalogDiscoveryToolbar
+          search={search}
+          onSearchChange={setSearch}
           searchPlaceholder={t('genres.searchPlaceholder')}
           searchAriaLabel={t('genres.searchLabel')}
           clearSearchLabel={t('genres.clearSearch')}
-          sortAriaLabel={t('genres.sortLabel')}
+          sort={sort}
+          onSortChange={setSort}
           popularityLabel={t('genres.sortPopularity')}
           alphabeticalLabel={t('genres.sortAlphabetical')}
+          sortTooltip={t('genres.sortTooltip')}
           benchmarkKind="genres"
+          selectionMode={selectionActive}
+          onToggleSelectionMode={() => {
+            if (selectionActive) cancelSelection();
+            else beginSelection('genres');
+          }}
+          selectLabel={t('genres.selectTags')}
+          cancelSelectionLabel={t('genres.cancelSelection')}
+        />
+      )}
+
+      {selectionActive && (
+        <TagExplorerSelectionBar
+          origin={selectionOrigin ?? 'genres'}
+          tags={selectedTags}
+          onRemove={removeSelection}
+          onClear={clearSelection}
+          onCancel={cancelSelection}
+          selectedCountLabel={t('genres.selectedTagCount', { count: selectedTags.length })}
+          clearLabel={t('genres.clearSelection')}
+          cancelLabel={t('genres.cancelSelection')}
+          viewResultsLabel={t('genres.viewResults')}
+          minimumLabel={t('genres.selectionMinimum')}
+          genreLabel={t('genres.genreTagLabel')}
+          moodLabel={t('genres.moodTagLabel')}
         />
       )}
 
       {loading && <p className="loading-text">{t('genres.loading')}</p>}
       {!loading && catalogGenres.length === 0 && <p className="loading-text">{t('genres.empty')}</p>}
-      {!loading && catalogGenres.length > 0 && genres.length === 0 && searchActive && (
+      {!loading && catalogGenres.length > 0 && genres.length === 0 && (
         <p className="loading-text">{t('genres.noSearchResults', { query: search.trim() })}</p>
       )}
 
@@ -206,7 +238,14 @@ export default function Genres() {
               <button
                 key={genre.value}
                 type="button"
-                className="genre-pill"
+                className={`genre-pill${selectionActive && selectedTags.some(
+                  tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'genre', value: genre.value }),
+                ) ? ' genre-pill--selected' : ''}`}
+                aria-pressed={selectionActive
+                  ? selectedTags.some(
+                      tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'genre', value: genre.value }),
+                    )
+                  : undefined}
                 style={{
                   '--genre-color': color,
                   fontSize: `${fontRem.toFixed(3)}rem`,

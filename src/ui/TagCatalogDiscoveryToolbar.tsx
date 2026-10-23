@@ -7,6 +7,7 @@ interface Props {
   search: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  searchAriaLabel?: string;
   clearSearchLabel: string;
   sort: TagCatalogSort;
   onSortChange: (value: TagCatalogSort) => void;
@@ -24,6 +25,7 @@ export default function TagCatalogDiscoveryToolbar({
   search,
   onSearchChange,
   searchPlaceholder,
+  searchAriaLabel,
   clearSearchLabel,
   sort,
   onSortChange,
@@ -67,7 +69,7 @@ export default function TagCatalogDiscoveryToolbar({
             paddingRight: search ? 28 : undefined,
           }}
           placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder}
+          aria-label={searchAriaLabel ?? searchPlaceholder}
           value={search}
           onChange={event => onSearchChange(event.target.value)}
           data-benchmark-tag-catalog-search={benchmarkKind}
