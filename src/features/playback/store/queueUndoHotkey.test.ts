@@ -12,7 +12,7 @@ const hoisted = vi.hoisted(() => ({
   redoMock: vi.fn(() => true),
 }));
 
-vi.mock('@/app/windowKind', () => ({ getWindowKind: hoisted.windowKindMock }));
+vi.mock('@/lib/windowKind', () => ({ getWindowKind: hoisted.windowKindMock }));
 vi.mock('@/features/playback/store/playerStore', () => ({
   usePlayerStore: {
     getState: () => ({

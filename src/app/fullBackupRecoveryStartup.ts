@@ -1,5 +1,5 @@
 import { reconcileFullBackupImportRecovery } from '@/features/settings/utils/backup';
-import type { WindowKind } from './windowKind';
+import type { WindowKind } from '@/lib/windowKind';
 
 /** Only the main webview may mutate durable full-import recovery state. */
 export async function reconcileFullBackupImportRecoveryForWindow(

@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import ReactDOM, { type Root } from 'react-dom/client';
 import i18n from '@/lib/i18n';
-import { getWindowKind } from './app/windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import {
   observeNavidromeCanonicalSuccessfulPing,
   runNavidromeCanonicalMigrationCoordinator,

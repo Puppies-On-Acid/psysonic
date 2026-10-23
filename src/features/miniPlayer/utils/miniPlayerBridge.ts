@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { isMainWindow } from '@/lib/windowKind';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { usePlayerStore } from '@/features/playback/store/playerStore';
 import { skipToNextAlbum, skipToPreviousAlbum } from '@/features/playback';
@@ -78,7 +78,7 @@ function snapshot(): MiniSyncPayload {
  */
 export function initMiniPlayerBridgeOnMain(): () => void {
   // Only run on the main window
-  if (getCurrentWindow().label !== 'main') return () => {};
+  if (!isMainWindow()) return () => {};
 
   const restoreMainWindow = () => {
     showMainWindow().catch(() => {});

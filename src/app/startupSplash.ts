@@ -1,5 +1,5 @@
 import { applyStartupSplashThemeFromStorage } from '@/lib/themes/startupThemeAppearance';
-import { getWindowKind } from './windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 
 export const STARTUP_SPLASH_ID = 'app-startup-splash';
 export const STARTUP_ROOT_PENDING_CLASS = 'app-root--startup-pending';

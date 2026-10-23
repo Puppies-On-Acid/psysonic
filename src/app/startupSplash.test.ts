@@ -7,7 +7,7 @@ import {
   scheduleStartupSplashDismiss,
 } from './startupSplash';
 
-vi.mock('./windowKind', () => ({
+vi.mock('@/lib/windowKind', () => ({
   getWindowKind: vi.fn(() => 'main'),
 }));
 
@@ -15,7 +15,7 @@ vi.mock('@/lib/themes/startupThemeAppearance', () => ({
   applyStartupSplashThemeFromStorage: vi.fn(() => 'mocha'),
 }));
 
-import { getWindowKind } from './windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import { applyStartupSplashThemeFromStorage } from '@/lib/themes/startupThemeAppearance';
 
 describe('startupSplash', () => {
