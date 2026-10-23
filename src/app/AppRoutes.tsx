@@ -47,6 +47,7 @@ const Genres = lazy(() => import('@/features/genre/pages/Genres'));
 const GenreDetail = lazy(() => import('@/features/genre/pages/GenreDetail'));
 const Moods = lazy(() => import('@/features/mood/pages/Moods'));
 const MoodDetail = lazy(() =>import('@/features/mood/pages/MoodDetail'));
+const TagExplorerResultsPage = lazy(() => import('@/features/tagExplorer/pages/TagExplorerResultsPage'));
 const Shared = lazy(() => import('@/features/share/pages/Shared'));
 
 /**

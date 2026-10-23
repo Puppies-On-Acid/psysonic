@@ -329,7 +329,6 @@ export function AppShell() {
                 <div style={{ minHeight: '60vh' }} />
               ) : (
                 <AppRoutes />
-      <SongLyricsModal />
               )}
             </Suspense>
           </OverlayScrollArea>
@@ -359,6 +358,7 @@ export function AppShell() {
       )}
       <ContextMenu />
       <SongInfoModal />
+      <SongLyricsModal />
       <PlaybackAlternativeModal />
       <DownloadFolderModal />
       <GlobalConfirmModal />
