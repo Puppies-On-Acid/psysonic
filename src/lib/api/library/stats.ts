@@ -14,6 +14,14 @@ import type {
   LabelAlbumCountRow,
   LibraryGenreAlbumsRequest,
   LibraryGenreAlbumsResponse,
+  LibraryGenreTracksRequest,
+  LibraryGenreTracksResponse,
+  LibraryTagExplorerAlbumsRequest,
+  LibraryTagExplorerAlbumsResponse,
+  LibraryTagExplorerTracksRequest,
+  LibraryTagExplorerTracksResponse,
+  LibraryTagExplorerTrackRefsRequest,
+  LibraryTagExplorerTrackRefsResponse,
   LibraryMoodAlbumsRequest,
   LibraryMoodAlbumsResponse,
   LibraryMoodTracksRequest,
@@ -97,6 +105,123 @@ export function libraryListAlbumsByGenre(
     albums: response.albums.map(album => ({
       ...album,
       serverId: mapServerIdFromIndexKey(album.serverId, request.serverId),
+    })),
+  }));
+}
+
+/** Paginated tracks for one genre from the local track-genre index. */
+export function libraryListTracksByGenre(
+  request: LibraryGenreTracksRequest,
+): Promise<LibraryGenreTracksResponse> {
+  const indexKey = serverIndexKeyForId(request.serverId);
+  const libraryScopes = request.libraryScopes
+    ? mapScopePairs(request.libraryScopes, request.serverId)
+    : undefined;
+
+  return invoke<LibraryGenreTracksResponse>('library_list_tracks_by_genre', {
+    request: {
+      serverId: indexKey,
+      genre: request.genre,
+      libraryScope: request.libraryScope ?? undefined,
+      libraryScopes,
+      limit: request.limit ?? 100,
+      offset: request.offset ?? 0,
+      includeTotal: request.includeTotal ?? false,
+      countOnly: request.countOnly ?? false,
+    },
+  }).then(response => ({
+    ...response,
+    tracks: response.tracks.map(track => ({
+      ...track,
+      serverId: mapServerIdFromIndexKey(track.serverId, request.serverId),
+    })),
+  }));
+}
+
+/** Paginated mixed Genre/Mood album results from the local projections. */
+export function libraryTagExplorerAlbums(
+  request: LibraryTagExplorerAlbumsRequest,
+): Promise<LibraryTagExplorerAlbumsResponse> {
+  const indexKey = serverIndexKeyForId(request.serverId);
+  const libraryScopes = request.libraryScopes
+    ? mapScopePairs(request.libraryScopes, request.serverId)
+    : undefined;
+
+  return invoke<LibraryTagExplorerAlbumsResponse>('library_tag_explorer_albums', {
+    request: {
+      serverId: indexKey,
+      libraryScope: request.libraryScope ?? undefined,
+      libraryScopes,
+      tags: request.tags,
+      mode: request.mode ?? 'or',
+      limit: request.limit ?? 50,
+      offset: request.offset ?? 0,
+      includeTotal: request.includeTotal ?? false,
+      countOnly: request.countOnly ?? false,
+    },
+  }).then(response => ({
+    ...response,
+    albums: response.albums.map(album => ({
+      ...album,
+      serverId: mapServerIdFromIndexKey(album.serverId, request.serverId),
+    })),
+  }));
+}
+
+/** Paginated mixed Genre/Mood track results from the local projections. */
+export function libraryTagExplorerTracks(
+  request: LibraryTagExplorerTracksRequest,
+): Promise<LibraryTagExplorerTracksResponse> {
+  const indexKey = serverIndexKeyForId(request.serverId);
+  const libraryScopes = request.libraryScopes
+    ? mapScopePairs(request.libraryScopes, request.serverId)
+    : undefined;
+
+  return invoke<LibraryTagExplorerTracksResponse>('library_tag_explorer_tracks', {
+    request: {
+      serverId: indexKey,
+      libraryScope: request.libraryScope ?? undefined,
+      libraryScopes,
+      tags: request.tags,
+      mode: request.mode ?? 'or',
+      limit: request.limit ?? 100,
+      offset: request.offset ?? 0,
+      includeTotal: request.includeTotal ?? false,
+      countOnly: request.countOnly ?? false,
+    },
+  }).then(response => ({
+    ...response,
+    tracks: response.tracks.map(track => ({
+      ...track,
+      serverId: mapServerIdFromIndexKey(track.serverId, request.serverId),
+    })),
+  }));
+}
+
+/** Lightweight paged refs used to materialize complete Explorer selections. */
+export function libraryTagExplorerTrackRefs(
+  request: LibraryTagExplorerTrackRefsRequest,
+): Promise<LibraryTagExplorerTrackRefsResponse> {
+  const indexKey = serverIndexKeyForId(request.serverId);
+  const libraryScopes = request.libraryScopes
+    ? mapScopePairs(request.libraryScopes, request.serverId)
+    : undefined;
+
+  return invoke<LibraryTagExplorerTrackRefsResponse>('library_tag_explorer_track_refs', {
+    request: {
+      serverId: indexKey,
+      libraryScope: request.libraryScope ?? undefined,
+      libraryScopes,
+      tags: request.tags,
+      mode: request.mode ?? 'or',
+      limit: request.limit ?? 500,
+      offset: request.offset ?? 0,
+    },
+  }).then(response => ({
+    ...response,
+    tracks: response.tracks.map(track => ({
+      ...track,
+      serverId: mapServerIdFromIndexKey(track.serverId, request.serverId),
     })),
   }));
 }
