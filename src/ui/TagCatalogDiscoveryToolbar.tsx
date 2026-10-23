@@ -63,6 +63,7 @@ export default function TagCatalogDiscoveryToolbar({
           }}
         />
         <input
+          type="search"
           className="input-search"
           style={{
             width: '100%',
