@@ -154,6 +154,7 @@ export default function ArtistDetailTracksSection({
             failed={allTracks.failed}
             onPlay={onPlayAllTracks}
             columns={columns}
+            playlistMembershipFallbackServerId={serverId}
           />
         )}
       </div>

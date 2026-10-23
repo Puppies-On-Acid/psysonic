@@ -21,6 +21,7 @@ export const contextMenu = {
   removeFromQueue: 'Diesen Song entfernen',
   removeFromPlaylist: 'Aus Playlist entfernen',
   openAlbum: 'Album öffnen',
+  openPlaylist: 'Playlist öffnen',
   goToArtist: 'Zum Künstler',
   download: 'Herunterladen (ZIP)',
   addToPlaylist: 'Zur Playlist hinzufügen',

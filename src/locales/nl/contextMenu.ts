@@ -20,6 +20,7 @@ export const contextMenu = {
   unfavoriteAlbum: 'Album uit favorieten verwijderen',
   removeFromQueue: 'Uit wachtrij verwijderen',
   openAlbum: 'Album openen',
+  openPlaylist: 'Afspeellijst openen',
   goToArtist: 'Naar artiest',
   download: 'Downloaden (ZIP)',
   addToPlaylist: 'Toevoegen aan playlist',

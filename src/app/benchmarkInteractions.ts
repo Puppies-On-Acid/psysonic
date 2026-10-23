@@ -336,8 +336,11 @@ function sentinelItemCount(sentinel: HTMLElement | null): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-async function runPaginationInteraction(route: string): Promise<BenchmarkInteractionResult> {
-  return measureInteraction('pagination:scroll-next-page', 'pagination', async () => {
+async function runPaginationInteraction(
+  route: string,
+  name = 'pagination:scroll-next-page',
+): Promise<BenchmarkInteractionResult> {
+  return measureInteraction(name, 'pagination', async () => {
     const initialSentinel = document.querySelector<HTMLElement>('[data-benchmark-scroll-sentinel]');
     if (!initialSentinel) {
       return { status: 'skipped', details: { reason: 'no additional page available' } };
@@ -371,6 +374,220 @@ async function runPaginationInteraction(route: string): Promise<BenchmarkInterac
   });
 }
 
+async function runTagExplorerInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = '[data-benchmark-tag-explorer-view]';
+  const albumsControl =
+    '[data-benchmark-tag-explorer-view-control="albums"]';
+  const tracksControl =
+    '[data-benchmark-tag-explorer-view-control="tracks"]';
+  const orControl =
+    '[data-benchmark-tag-explorer-mode-control="or"]';
+  const andControl =
+    '[data-benchmark-tag-explorer-mode-control="and"]';
+  const results: BenchmarkInteractionResult[] = [];
+
+  const wait = (
+    view: 'albums' | 'tracks',
+    mode: 'or' | 'and',
+  ) => waitForCondition(() => {
+    const root = document.querySelector<HTMLElement>(rootSelector);
+    return root?.getAttribute('data-benchmark-tag-explorer-view') === view
+      && root.getAttribute('data-benchmark-tag-explorer-mode') === mode
+      && root.getAttribute('data-benchmark-loading') === 'false';
+  });
+
+  const ensure = async (
+    view: 'albums' | 'tracks',
+    mode: 'or' | 'and',
+  ): Promise<boolean> => {
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-tag-explorer-mode',
+      ) !== mode
+    ) {
+      if (!click(mode === 'or' ? orControl : andControl)) return false;
+    }
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-tag-explorer-view',
+      ) !== view
+    ) {
+      if (!click(view === 'albums' ? albumsControl : tracksControl)) {
+        return false;
+      }
+    }
+    return wait(view, mode);
+  };
+
+  try {
+    if (await ensure('albums', 'or')) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:explorer-albums-next-page',
+        ),
+      );
+    }
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-albums',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('albums', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    await ensure('albums', 'or');
+
+    results.push(await measureInteraction(
+      'view:explorer-tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer Tracks tab unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'or');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    if (await ensure('tracks', 'or')) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:explorer-tracks-next-page',
+        ),
+      );
+    }
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-tracks',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+  } finally {
+    await ensure('albums', 'or');
+  }
+
+  return results;
+}
+
+async function runGenreDetailInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = '[data-benchmark-genre-detail-view]';
+  const albumsControl = '[data-benchmark-genre-view="albums"]';
+  const tracksControl = '[data-benchmark-genre-view="tracks"]';
+  const results: BenchmarkInteractionResult[] = [];
+
+  results.push(
+    await runPaginationInteraction(
+      route,
+      'pagination:albums-next-page',
+    ),
+  );
+
+  try {
+    const tracks = await measureInteraction(
+      'view:tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: {
+              reason: 'genre Tracks tab unavailable',
+            },
+          };
+        }
+
+        const completed = await waitForBrowseState(
+          rootSelector,
+          'data-benchmark-genre-detail-view',
+          'tracks',
+        );
+
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    );
+    results.push(tracks);
+
+    if (
+      tracks.status === 'completed' &&
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks'
+    ) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:tracks-next-page',
+        ),
+      );
+    }
+  } finally {
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks' &&
+      click(albumsControl)
+    ) {
+      await waitForBrowseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+        'albums',
+      );
+    }
+  }
+
+  return results;
+}
+
 export async function runBenchmarkInteractions(
   route: string,
   searchQuery: string | null,
@@ -381,6 +598,15 @@ export async function runBenchmarkInteractions(
   if (path === '/search/advanced') {
     const search = await runSearchInteraction(searchQuery);
     return [search, await runPaginationInteraction(route)];
+  }
+  if (
+    path === '/genres/explore/results'
+    || path === '/moods/explore/results'
+  ) {
+    return runTagExplorerInteractions(route);
+  }
+  if (/^\/genres\/[^/]+$/.test(path)) {
+    return runGenreDetailInteractions(route);
   }
   if (routeSupportsScrollPagination(route)) return [await runPaginationInteraction(route)];
   return [];
