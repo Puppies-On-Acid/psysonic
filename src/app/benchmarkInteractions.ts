@@ -4,6 +4,10 @@ import type {
   BenchmarkInteractionResult,
   BenchmarkInteractionStatus,
 } from '@/lib/perf/benchmark';
+import {
+  benchmarkTagExplorerReady,
+  tagExplorerBenchmarkTarget,
+} from './benchmarkTagExplorerReady';
 
 const INTERACTION_TIMEOUT_MS = 30_000;
 const STABLE_WINDOW_MS = 700;
@@ -374,64 +378,83 @@ async function runPaginationInteraction(
   });
 }
 
+const EXPLORER_ROOT = '[data-benchmark-tag-explorer-view]';
+const EXPLORER_ALBUMS = '[data-benchmark-tag-explorer-view-control="albums"]';
+const EXPLORER_TRACKS = '[data-benchmark-tag-explorer-view-control="tracks"]';
+const EXPLORER_OR = '[data-benchmark-tag-explorer-mode-control="or"]';
+const EXPLORER_AND = '[data-benchmark-tag-explorer-mode-control="and"]';
+
+type ExplorerBenchmarkView = 'albums' | 'tracks';
+type ExplorerBenchmarkMode = 'or' | 'and';
+
+function waitForTagExplorerBenchmarkState(
+  route: string,
+  view: ExplorerBenchmarkView,
+  mode: ExplorerBenchmarkMode,
+): Promise<boolean> {
+  const target = tagExplorerBenchmarkTarget(route, view, mode);
+  return waitForCondition(() => benchmarkTagExplorerReady(
+    target,
+    document.querySelector(EXPLORER_ROOT),
+    window.location,
+  ));
+}
+
+/**
+ * Each control derives navigation from React's current URL state. Never click
+ * the mode and view controls in the same tick: the second click can overwrite
+ * the first while the first navigation is still committing.
+ */
+export async function ensureTagExplorerBenchmarkState(
+  route: string,
+  view: ExplorerBenchmarkView,
+  mode: ExplorerBenchmarkMode,
+): Promise<boolean> {
+  const previousView = browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-view');
+  if (previousView !== 'albums' && previousView !== 'tracks') return false;
+
+  if (browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-mode') !== mode) {
+    if (!click(mode === 'or' ? EXPLORER_OR : EXPLORER_AND)) return false;
+    if (!await waitForTagExplorerBenchmarkState(route, previousView, mode)) return false;
+  }
+
+  if (browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-view') !== view) {
+    if (!click(view === 'albums' ? EXPLORER_ALBUMS : EXPLORER_TRACKS)) return false;
+  }
+  return waitForTagExplorerBenchmarkState(route, view, mode);
+}
+
 async function runTagExplorerInteractions(
   route: string,
 ): Promise<BenchmarkInteractionResult[]> {
-  const rootSelector = '[data-benchmark-tag-explorer-view]';
-  const albumsControl =
-    '[data-benchmark-tag-explorer-view-control="albums"]';
-  const tracksControl =
-    '[data-benchmark-tag-explorer-view-control="tracks"]';
-  const orControl =
-    '[data-benchmark-tag-explorer-mode-control="or"]';
-  const andControl =
-    '[data-benchmark-tag-explorer-mode-control="and"]';
+  const rootSelector = EXPLORER_ROOT;
+  const albumsControl = EXPLORER_ALBUMS;
+  const tracksControl = EXPLORER_TRACKS;
+  const orControl = EXPLORER_OR;
+  const andControl = EXPLORER_AND;
   const results: BenchmarkInteractionResult[] = [];
-
-  const wait = (
-    view: 'albums' | 'tracks',
-    mode: 'or' | 'and',
-  ) => waitForCondition(() => {
-    const root = document.querySelector<HTMLElement>(rootSelector);
-    return root?.getAttribute('data-benchmark-tag-explorer-view') === view
-      && root.getAttribute('data-benchmark-tag-explorer-mode') === mode
-      && root.getAttribute('data-benchmark-loading') === 'false';
-  });
-
-  const ensure = async (
-    view: 'albums' | 'tracks',
-    mode: 'or' | 'and',
-  ): Promise<boolean> => {
-    if (
-      browseState(
-        rootSelector,
-        'data-benchmark-tag-explorer-mode',
-      ) !== mode
-    ) {
-      if (!click(mode === 'or' ? orControl : andControl)) return false;
-    }
-    if (
-      browseState(
-        rootSelector,
-        'data-benchmark-tag-explorer-view',
-      ) !== view
-    ) {
-      if (!click(view === 'albums' ? albumsControl : tracksControl)) {
-        return false;
-      }
-    }
-    return wait(view, mode);
-  };
+  const wait = (view: ExplorerBenchmarkView, mode: ExplorerBenchmarkMode) =>
+    waitForTagExplorerBenchmarkState(route, view, mode);
+  const ensure = (view: ExplorerBenchmarkView, mode: ExplorerBenchmarkMode) =>
+    ensureTagExplorerBenchmarkState(route, view, mode);
 
   try {
-    if (await ensure('albums', 'or')) {
-      results.push(
-        await runPaginationInteraction(
-          route,
-          'pagination:explorer-albums-next-page',
-        ),
-      );
-    }
+    const setup = await measureInteraction(
+      'state:explorer-prepare-albums-or',
+      'filter',
+      async () => ({
+        status: await ensure('albums', 'or') ? 'completed' : 'timeout',
+      }),
+    );
+    results.push(setup);
+    if (setup.status !== 'completed') return results;
+
+    results.push(
+      await runPaginationInteraction(
+        route,
+        'pagination:explorer-albums-next-page',
+      ),
+    );
 
     results.push(await measureInteraction(
       'filter:explorer-and-albums',
@@ -453,7 +476,15 @@ async function runTagExplorerInteractions(
       },
     ));
 
-    await ensure('albums', 'or');
+    const reset = await measureInteraction(
+      'state:explorer-reset-albums-or',
+      'filter',
+      async () => ({
+        status: await ensure('albums', 'or') ? 'completed' : 'timeout',
+      }),
+    );
+    results.push(reset);
+    if (reset.status !== 'completed') return results;
 
     results.push(await measureInteraction(
       'view:explorer-tracks-first-page',
@@ -504,7 +535,21 @@ async function runTagExplorerInteractions(
       },
     ));
   } finally {
-    await ensure('albums', 'or');
+    results.push(await measureInteraction(
+      'state:explorer-restore-albums-or',
+      'filter',
+      async () => {
+        const restored = await ensure('albums', 'or');
+        return {
+          status: restored ? 'completed' : 'timeout',
+          details: {
+            restored,
+            view: browseState(rootSelector, 'data-benchmark-tag-explorer-view'),
+            mode: browseState(rootSelector, 'data-benchmark-tag-explorer-mode'),
+          },
+        };
+      },
+    ));
   }
 
   return results;

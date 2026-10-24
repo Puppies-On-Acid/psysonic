@@ -91,6 +91,7 @@ export default function TagExplorerResultsPage() {
     albumHasMore,
     albumTotal,
     albumsReady,
+    activeQueryReady,
     albumsLoading,
     albumsLoadingMore,
     loadMoreAlbums,
@@ -266,6 +267,11 @@ export default function TagExplorerResultsPage() {
         : ''}`}
       data-benchmark-tag-explorer-view={state.view}
       data-benchmark-tag-explorer-mode={state.mode}
+      data-benchmark-tag-explorer-tags={JSON.stringify(
+        state.tags.map(tag => `${tag.kind}:${tag.value}`),
+      )}
+      data-benchmark-query-ready={activeQueryReady ? 'true' : 'false'}
+      data-benchmark-query-error={error != null ? 'true' : 'false'}
       data-benchmark-loading={
         (state.view === 'albums' ? albumsLoading : tracksLoading)
           ? 'true'

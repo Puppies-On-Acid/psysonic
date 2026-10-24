@@ -199,6 +199,11 @@ export function useTagExplorerBrowse(
   const [albumHasMore, setAlbumHasMore] = useState(initial.albumHasMore);
   const [albumTotal, setAlbumTotal] = useState<number | null>(initial.albumTotal);
   const [albumsReady, setAlbumsReady] = useState(initial.albumsReady);
+  // Instrumentation only: the last query whose Albums data actually completed.
+  // Ready flags alone can still describe the previous query during navigation.
+  const [albumsReadyKey, setAlbumsReadyKey] = useState<string | null>(
+    initial.albumsReady ? key : null,
+  );
   const [albumsLoading, setAlbumsLoading] = useState(
     activeView === 'albums' && !initial.albumsReady,
   );
@@ -209,6 +214,9 @@ export function useTagExplorerBrowse(
   const [trackHasMore, setTrackHasMore] = useState(initial.trackHasMore);
   const [trackTotal, setTrackTotal] = useState<number | null>(initial.trackTotal);
   const [tracksReady, setTracksReady] = useState(initial.tracksReady);
+  const [tracksReadyKey, setTracksReadyKey] = useState<string | null>(
+    initial.tracksReady ? key : null,
+  );
   const [tracksLoading, setTracksLoading] = useState(
     activeView === 'tracks' && !initial.tracksReady,
   );
@@ -233,6 +241,7 @@ export function useTagExplorerBrowse(
       setAlbumHasMore(cached.albumHasMore);
       setAlbumTotal(cached.albumTotal);
       setAlbumsReady(cached.albumsReady);
+      setAlbumsReadyKey(cached.albumsReady ? key : null);
       setAlbumsLoading(false);
       setAlbumsLoadingMore(false);
       albumsLoadingMoreRef.current = false;
@@ -242,6 +251,7 @@ export function useTagExplorerBrowse(
       setTrackHasMore(cached.trackHasMore);
       setTrackTotal(cached.trackTotal);
       setTracksReady(cached.tracksReady);
+      setTracksReadyKey(cached.tracksReady ? key : null);
       setTracksLoading(false);
       setTracksLoadingMore(false);
       tracksLoadingMoreRef.current = false;
@@ -266,6 +276,7 @@ export function useTagExplorerBrowse(
         setAlbumHasMore(cached.albumHasMore);
         setAlbumTotal(cached.albumTotal);
         setAlbumsReady(true);
+        setAlbumsReadyKey(key);
         setAlbumsLoading(false);
         setAlbumError(null);
         return;
@@ -294,6 +305,7 @@ export function useTagExplorerBrowse(
         setAlbumHasMore(response.hasMore);
         setAlbumTotal(response.total ?? null);
         setAlbumsReady(true);
+        setAlbumsReadyKey(key);
         patchCache(key, {
           albums: nextAlbums,
           albumHasMore: response.hasMore,
@@ -318,6 +330,7 @@ export function useTagExplorerBrowse(
         setTrackHasMore(cached.trackHasMore);
         setTrackTotal(cached.trackTotal);
         setTracksReady(true);
+        setTracksReadyKey(key);
         setTracksLoading(false);
         setTrackError(null);
         return;
@@ -346,6 +359,7 @@ export function useTagExplorerBrowse(
         setTrackHasMore(response.hasMore);
         setTrackTotal(response.total ?? null);
         setTracksReady(true);
+        setTracksReadyKey(key);
         patchCache(key, {
           songs: nextSongs,
           trackHasMore: response.hasMore,
@@ -498,6 +512,10 @@ export function useTagExplorerBrowse(
     albumHasMore,
     albumTotal,
     albumsReady,
+    // Benchmark state is intentionally separate from the UI-ready flags.
+    activeQueryReady: activeView === 'albums'
+      ? albumsReady && !albumsLoading && !albumError && albumsReadyKey === key
+      : tracksReady && !tracksLoading && !trackError && tracksReadyKey === key,
     albumsLoading,
     albumsLoadingMore,
     albumError,

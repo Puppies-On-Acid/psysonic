@@ -88,7 +88,8 @@ function browseResult(overrides: Record<string, unknown> = {}) {
     tracksLoading: false,
     tracksLoadingMore: false,
     loadMoreTracks: vi.fn(),
-    error: null,
+    albumError: null,
+    trackError: null,
     ...overrides,
   };
 }
@@ -124,6 +125,18 @@ describe('TagExplorerResultsPage', () => {
     hoisted.useBrowse.mockReturnValue(browseResult());
     hoisted.useSelection.mockReset();
     hoisted.useSelection.mockReturnValue(emptySelection);
+  });
+
+  it('exposes query-specific benchmark readiness for the requested tags', () => {
+    hoisted.useBrowse.mockReturnValue(browseResult({ activeQueryReady: true }));
+    renderPage('?tag=genre%3AProgressive+Rock&tag=mood%3ADreamy');
+    const root = document.querySelector('[data-benchmark-tag-explorer-view]');
+    expect(root).toHaveAttribute(
+      'data-benchmark-tag-explorer-tags',
+      JSON.stringify(['genre:Progressive Rock', 'mood:Dreamy']),
+    );
+    expect(root).toHaveAttribute('data-benchmark-query-ready', 'true');
+    expect(root).toHaveAttribute('data-benchmark-query-error', 'false');
   });
 
   it('opens on Albums and does not enable the Tracks query', () => {

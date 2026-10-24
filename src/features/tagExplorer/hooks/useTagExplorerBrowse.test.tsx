@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
@@ -232,6 +232,52 @@ describe('useTagExplorerBrowse', () => {
     rerender({ genre: 'Jazz' });
     await waitFor(() => expect(result.current.songs[0]?.id).toBe('Jazz'));
     expect(hoisted.tracks).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report stale Albums as query-ready while a new tag query loads', async () => {
+    let finishNewQuery: ((value: {
+      albums: Array<{ id: string; serverId: string; name: string }>;
+      hasMore: boolean;
+      total: number;
+      source: string;
+    }) => void) | undefined;
+    hoisted.albums
+      .mockResolvedValueOnce({
+        albums: [{ id: 'old', serverId: 's1', name: 'Old' }],
+        hasMore: false,
+        total: 1,
+        source: 'local',
+      })
+      .mockImplementationOnce(() => new Promise(resolve => {
+        finishNewQuery = resolve;
+      }));
+
+    const { result, rerender } = renderHook(
+      ({ genre }: { genre: string }) => useTagExplorerBrowse(
+        's1',
+        [{ kind: 'genre', value: genre }, { kind: 'mood', value: 'Dreamy' }],
+        'or',
+        'albums',
+        305,
+        scope,
+      ),
+      { initialProps: { genre: 'Old genre' } },
+    );
+    await waitFor(() => expect(result.current.activeQueryReady).toBe(true));
+    rerender({ genre: 'New genre' });
+    await waitFor(() => expect(hoisted.albums).toHaveBeenCalledTimes(2));
+    expect(result.current.activeQueryReady).toBe(false);
+
+    await act(async () => {
+      finishNewQuery?.({
+        albums: [{ id: 'new', serverId: 's1', name: 'New' }],
+        hasMore: false,
+        total: 1,
+        source: 'local',
+      });
+    });
+    await waitFor(() => expect(result.current.activeQueryReady).toBe(true));
+    expect(result.current.albums[0].id).toBe('new');
   });
 
   it('refetches when the selected library folder changes', async () => {
