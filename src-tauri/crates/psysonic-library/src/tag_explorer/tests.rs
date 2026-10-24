@@ -299,5 +299,7 @@ fn collective_album_predicate_uses_browse_indexes() {
 
 
 // Diagnostic-only child modules. Neither is compiled into production code.
+#[path = "tests/oracle.rs"]
 mod oracle;
+#[path = "tests/perf_probe.rs"]
 mod perf_probe;
