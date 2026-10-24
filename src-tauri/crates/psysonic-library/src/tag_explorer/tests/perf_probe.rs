@@ -5,6 +5,9 @@
 //! library-cluster.db sidecar into a directory named psysonic-explorer-probe,
 //! and create PROBE-COPY-ONLY.txt containing the exact acknowledgement below.
 //! Then set PSYSONIC_PERF_DB to the copied library.sqlite.
+//! The supplied copy is never opened by Psysonic: it is copied into a unique
+//! temporary sandbox first. Migrations and identity-key maintenance may write
+//! only to that sandbox, which is deleted when the probe completes.
 //!
 //! Only aggregate counts, timing statistics, scope labels and SQLite plan
 //! descriptions are printed; server IDs, tags and library names remain private.
@@ -22,6 +25,54 @@ const RUNS: usize = 5;
 const COPY_FOLDER: &str = "psysonic-explorer-probe";
 const COPY_MARKER: &str = "PROBE-COPY-ONLY.txt";
 const ACKNOWLEDGEMENT: &str = "I confirm these are disposable Psysonic database copies.";
+
+/// The source probe DB is immutable input. A second throwaway copy allows
+/// the real LibraryStore API (which may migrate or rebuild cluster keys) to
+/// run without writing to either the supplied snapshot or the user's profile.
+struct ProbeSandbox {
+    directory: PathBuf,
+    database: PathBuf,
+}
+
+impl Drop for ProbeSandbox {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_dir_all(&self.directory) {
+            eprintln!("WARNING: temporary probe sandbox cleanup failed: {error}");
+        }
+    }
+}
+
+fn stage_in_temporary_sandbox(source_db: &std::path::Path) -> ProbeSandbox {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "psysonic-explorer-probe-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&directory).expect("create temporary probe sandbox");
+    let sandbox = ProbeSandbox {
+        database: directory.join("library.sqlite"),
+        directory,
+    };
+    let parent = source_db.parent().expect("source parent");
+    for name in [
+        "library.sqlite",
+        "library.sqlite-wal",
+        "library-cluster.db",
+        "library-cluster.db-wal",
+    ] {
+        let source = parent.join(name);
+        if source.is_file() {
+            std::fs::copy(&source, sandbox.directory.join(name))
+                .unwrap_or_else(|error| panic!("cannot stage {name}: {error}"));
+        }
+    }
+    sandbox
+}
 
 #[derive(Clone, Copy)]
 enum View {
@@ -491,10 +542,15 @@ fn explorer_backend_queries_against_disposable_copy() {
     let Some(db) = checked_copy_path() else {
         return;
     };
+    let staged_at = Instant::now();
+    let sandbox = stage_in_temporary_sandbox(&db);
+    eprintln!("sandbox_stage_ms={}", staged_at.elapsed().as_millis());
     let opened = Instant::now();
-    // This opener can write migrations; the path guard must precede it.
-    let store = LibraryStore::open_path_for_test(&db).expect("open copied database");
-    eprintln!("open_copy_ms={}", opened.elapsed().as_millis());
+    // This opener can migrate/rebuild, but only within the second disposable
+    // sandbox. The supplied copy and live Psysonic database stay untouched.
+    let store = LibraryStore::open_path_for_test(&sandbox.database)
+        .expect("open temporary probe sandbox");
+    eprintln!("open_sandbox_ms={}", opened.elapsed().as_millis());
     let scopes = nondeleted_scopes(&store);
     if scopes.is_empty() {
         eprintln!("SKIP: no indexed library scopes");
@@ -578,5 +634,7 @@ fn explorer_backend_queries_against_disposable_copy() {
         }
     }
     assert!(executed > 0, "no probe cases were selected");
-    eprintln!("complete_cases={executed}; all writes were restricted to the disposable copy");
+    eprintln!(
+        "complete_cases={executed}; source copy unchanged; sandbox writes only"
+    );
 }
