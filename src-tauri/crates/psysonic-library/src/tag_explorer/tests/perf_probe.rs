@@ -108,7 +108,9 @@ fn checked_copy_path() -> Option<PathBuf> {
         Some("library.sqlite"),
         "probe expects a copied library.sqlite"
     );
-    let parent = path.parent().expect("probe DB must have a parent directory");
+    let parent = path
+        .parent()
+        .expect("probe DB must have a parent directory");
     assert_eq!(
         parent
             .file_name()
@@ -133,34 +135,40 @@ fn checked_copy_path() -> Option<PathBuf> {
 }
 
 fn nondeleted_scopes(store: &LibraryStore) -> Vec<LibraryScopePair> {
-    store.with_read_conn(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT server_id, library_id, COUNT(*) AS n FROM track \
+    store
+        .with_read_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT server_id, library_id, COUNT(*) AS n FROM track \
              WHERE deleted = 0 AND library_id IS NOT NULL AND library_id != '' \
              GROUP BY server_id, library_id ORDER BY n DESC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(LibraryScopePair {
-                server_id: row.get(0)?,
-                library_id: row.get(1)?,
-            })
-        })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-    }).expect("probe scopes")
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(LibraryScopePair {
+                    server_id: row.get(0)?,
+                    library_id: row.get(1)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .expect("probe scopes")
 }
 
 fn scope_cases(scopes: &[LibraryScopePair]) -> Vec<(&'static str, Vec<LibraryScopePair>)> {
     let first = &scopes[0];
     let mut cases = vec![
-        ("whole", vec![LibraryScopePair {
-            server_id: first.server_id.clone(),
-            library_id: None,
-        }]),
+        (
+            "whole",
+            vec![LibraryScopePair {
+                server_id: first.server_id.clone(),
+                library_id: None,
+            }],
+        ),
         ("exact", vec![first.clone()]),
     ];
-    if let Some(other) = scopes.iter().find(|s| {
-        s.server_id == first.server_id && s.library_id != first.library_id
-    }) {
+    if let Some(other) = scopes
+        .iter()
+        .find(|s| s.server_id == first.server_id && s.library_id != first.library_id)
+    {
         cases.push(("multi", vec![first.clone(), other.clone()]));
     }
     if let Some(other) = scopes.iter().find(|s| s.server_id != first.server_id) {
@@ -185,16 +193,18 @@ fn catalog(
         "SELECT {column} FROM {table} WHERE server_id = ?1 \
          GROUP BY {column} COLLATE NOCASE ORDER BY COUNT(*) {order}, {column} LIMIT 12"
     );
-    store.with_read_conn(|conn| {
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map([server], |row| {
-            Ok(LibraryTagFilter {
-                kind: kind.clone(),
-                value: row.get(0)?,
-            })
-        })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-    }).expect("probe catalog")
+    store
+        .with_read_conn(|conn| {
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map([server], |row| {
+                Ok(LibraryTagFilter {
+                    kind: kind.clone(),
+                    value: row.get(0)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .expect("probe catalog")
 }
 
 fn alternating(
@@ -218,25 +228,25 @@ fn alternating(
     (tags.len() == size).then_some(tags)
 }
 
-fn nonempty_ten_tag_and(
-    store: &LibraryStore,
-    server: &str,
-) -> Option<Vec<LibraryTagFilter>> {
+fn nonempty_ten_tag_and(store: &LibraryStore, server: &str) -> Option<Vec<LibraryTagFilter>> {
     // This discovery query may scan the tag projections; it runs outside the
     // measured intervals and finds a real *track-level* 10-tag intersection.
-    let track_id: Option<String> = store.with_read_conn(|conn| {
-        conn.query_row(
-            "SELECT refs.track_id \
+    let track_id: Option<String> = store
+        .with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT refs.track_id \
              FROM (SELECT server_id, track_id FROM track_genre \
                    UNION ALL SELECT server_id, track_id FROM track_mood) refs \
              INNER JOIN track t ON t.server_id = refs.server_id AND t.id = refs.track_id \
              WHERE refs.server_id = ?1 AND t.deleted = 0 \
              GROUP BY refs.server_id, refs.track_id \
              HAVING COUNT(*) >= 10 ORDER BY COUNT(*) DESC LIMIT 1",
-            [server],
-            |row| row.get(0),
-        ).optional()
-    }).expect("discover 10-tag AND");
+                [server],
+                |row| row.get(0),
+            )
+            .optional()
+        })
+        .expect("discover 10-tag AND");
     let track_id = track_id?;
     let mut tags = Vec::new();
     for (table, column, kind) in [
@@ -247,16 +257,18 @@ fn nonempty_ten_tag_and(
             "SELECT {column} FROM {table} WHERE server_id = ?1 AND track_id = ?2 \
              ORDER BY {column} COLLATE NOCASE LIMIT 10"
         );
-        let mut found: Vec<LibraryTagFilter> = store.with_read_conn(|conn| {
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map([server, &track_id], |row| {
-                Ok(LibraryTagFilter {
-                    kind: kind.clone(),
-                    value: row.get(0)?,
-                })
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()
-        }).expect("track tags");
+        let mut found: Vec<LibraryTagFilter> = store
+            .with_read_conn(|conn| {
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map([server, &track_id], |row| {
+                    Ok(LibraryTagFilter {
+                        kind: kind.clone(),
+                        value: row.get(0)?,
+                    })
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .expect("track tags");
         tags.append(&mut found);
     }
     tags.truncate(10);
@@ -287,9 +299,7 @@ fn build_query(
          WHERE t.deleted = 0"
     };
     let base = if matches!(view, View::Albums) {
-        format!(
-            "{base_join} AND t.album_id IS NOT NULL AND t.album_id != '' AND {where_sql}"
-        )
+        format!("{base_join} AND t.album_id IS NOT NULL AND t.album_id != '' AND {where_sql}")
     } else {
         format!("{base_join} AND {where_sql}")
     };
@@ -398,7 +408,11 @@ fn run_one(
 ) {
     let query = build_query(scopes, tags, mode, view);
     let mut page_binds = query.binds.clone();
-    page_binds.push(SqlValue::Integer(if matches!(view, View::Albums) { 51 } else { 101 }));
+    page_binds.push(SqlValue::Integer(if matches!(view, View::Albums) {
+        51
+    } else {
+        101
+    }));
     page_binds.push(SqlValue::Integer(i64::from(offset)));
 
     let mut raw_filter_ms = Vec::new();
@@ -412,54 +426,70 @@ fn run_one(
     let mut page_len = 0usize;
 
     for _ in 0..RUNS {
-        let (_, filter_timing) = store.with_read_conn_timed(|conn| {
-            conn.query_row(
-                &query.raw_filter_sql,
-                params_from_iter(query.binds.iter()),
-                |row| row.get::<_, i64>(0),
-            )
-        }).expect("raw filtering");
+        let (_, filter_timing) = store
+            .with_read_conn_timed(|conn| {
+                conn.query_row(
+                    &query.raw_filter_sql,
+                    params_from_iter(query.binds.iter()),
+                    |row| row.get::<_, i64>(0),
+                )
+            })
+            .expect("raw filtering");
         raw_filter_ms.push(filter_timing.exec_ms);
 
-        let (count, timing) = store.with_read_conn_timed(|conn| {
-            conn.query_row(
-                &query.count_sql,
-                params_from_iter(query.binds.iter()),
-                |row| row.get::<_, i64>(0),
-            )
-        }).expect("count statement");
+        let (count, timing) = store
+            .with_read_conn_timed(|conn| {
+                conn.query_row(
+                    &query.count_sql,
+                    params_from_iter(query.binds.iter()),
+                    |row| row.get::<_, i64>(0),
+                )
+            })
+            .expect("count statement");
         result_count = count;
         counts.push(timing.exec_ms);
         count_waits.push(timing.lock_wait_ms);
 
-        let ((n, map_us), timing) = store.with_read_conn_timed(|conn| {
-            let mut stmt = conn.prepare(&query.page_sql)?;
-            let mut converted_us = 0u128;
-            let mut count = 0usize;
-            let rows = stmt.query_map(params_from_iter(page_binds.iter()), |row| {
-                let started = Instant::now();
-                match view {
-                    View::Tracks => {
-                        let track = row_to_track_row(row)?;
-                        let _dto = LibraryTrackDto::from_row(&track);
+        let ((n, map_us), timing) = store
+            .with_read_conn_timed(|conn| {
+                let mut stmt = conn.prepare(&query.page_sql)?;
+                let mut converted_us = 0u128;
+                let mut count = 0usize;
+                let rows = stmt.query_map(params_from_iter(page_binds.iter()), |row| {
+                    let started = Instant::now();
+                    match view {
+                        View::Tracks => {
+                            let track = row_to_track_row(row)?;
+                            let _dto = LibraryTrackDto::from_row(&track);
+                        }
+                        View::Albums => {
+                            let parsed: crate::scope_merge::AlbumListRow = (
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                                row.get(5)?,
+                                row.get(6)?,
+                                row.get(7)?,
+                                row.get(8)?,
+                                row.get(9)?,
+                                row.get(10)?,
+                                row.get(11)?,
+                                row.get(12)?,
+                            );
+                            let _dto: LibraryAlbumDto =
+                                crate::scope_merge::album_row_to_dto(parsed);
+                        }
                     }
-                    View::Albums => {
-                        let parsed: crate::scope_merge::AlbumListRow = (
-                            row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
-                            row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?,
-                            row.get(8)?, row.get(9)?, row.get(10)?,
-                            row.get(11)?, row.get(12)?,
-                        );
-                        let _dto: LibraryAlbumDto = crate::scope_merge::album_row_to_dto(parsed);
-                    }
-                }
-                converted_us += started.elapsed().as_micros();
-                count += 1;
-                Ok(())
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?;
-            Ok((count, converted_us))
-        }).expect("page statement");
+                    converted_us += started.elapsed().as_micros();
+                    count += 1;
+                    Ok(())
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok((count, converted_us))
+            })
+            .expect("page statement");
         page_len = n;
         pages.push(timing.exec_ms);
         page_waits.push(timing.lock_wait_ms);
@@ -470,38 +500,57 @@ fn run_one(
         // from the SQL timings: the two reads are different transactions.
         let started = Instant::now();
         let public_page_len = match view {
-            View::Albums => list_albums(store, &LibraryTagExplorerAlbumsRequest {
-                server_id: scopes[0].server_id.clone(),
-                library_scope: None,
-                library_scopes: Some(scopes.to_vec()),
-                tags: tags.to_vec(),
-                mode,
-                limit: 50,
-                offset,
-                include_total: offset == 0,
-                count_only: false,
-            }).expect("albums API").albums.len(),
-            View::Tracks => list_tracks(store, &LibraryTagExplorerTracksRequest {
-                server_id: scopes[0].server_id.clone(),
-                library_scope: None,
-                library_scopes: Some(scopes.to_vec()),
-                tags: tags.to_vec(),
-                mode,
-                limit: 100,
-                offset,
-                include_total: offset == 0,
-                count_only: false,
-            }).expect("tracks API").tracks.len(),
+            View::Albums => list_albums(
+                store,
+                &LibraryTagExplorerAlbumsRequest {
+                    server_id: scopes[0].server_id.clone(),
+                    library_scope: None,
+                    library_scopes: Some(scopes.to_vec()),
+                    tags: tags.to_vec(),
+                    mode,
+                    limit: 50,
+                    offset,
+                    include_total: offset == 0,
+                    count_only: false,
+                },
+            )
+            .expect("albums API")
+            .albums
+            .len(),
+            View::Tracks => list_tracks(
+                store,
+                &LibraryTagExplorerTracksRequest {
+                    server_id: scopes[0].server_id.clone(),
+                    library_scope: None,
+                    library_scopes: Some(scopes.to_vec()),
+                    tags: tags.to_vec(),
+                    mode,
+                    limit: 100,
+                    offset,
+                    include_total: offset == 0,
+                    count_only: false,
+                },
+            )
+            .expect("tracks API")
+            .tracks
+            .len(),
         };
         api_ms.push(started.elapsed().as_millis() as u64);
         // The SQL mirror requests limit+1 for has_more; this is expected.
-        assert!(page_len == public_page_len || page_len == public_page_len + 1,
-            "probe SQL mirror and public API disagree on page size");
+        assert!(
+            page_len == public_page_len || page_len == public_page_len + 1,
+            "probe SQL mirror and public API disagree on page size"
+        );
     }
 
     eprintln!(
         "  view={} mode={mode:?} tags={} offset={} layer1={} total={} rows={} runs={RUNS}",
-        view.label(), tags.len(), offset, query.layer1, result_count, page_len
+        view.label(),
+        tags.len(),
+        offset,
+        query.layer1,
+        result_count,
+        page_len
     );
     stats("raw_filter_scan", "ms", &raw_filter_ms);
     stats("count_execution", "ms", &counts);
@@ -516,15 +565,19 @@ fn run_one(
         let mut refs_size = 0;
         for _ in 0..RUNS {
             let started = Instant::now();
-            let page = list_track_refs(store, &LibraryTagExplorerTrackRefsRequest {
-                server_id: scopes[0].server_id.clone(),
-                library_scope: None,
-                library_scopes: Some(scopes.to_vec()),
-                tags: tags.to_vec(),
-                mode,
-                limit: 500,
-                offset,
-            }).expect("full-width reference query");
+            let page = list_track_refs(
+                store,
+                &LibraryTagExplorerTrackRefsRequest {
+                    server_id: scopes[0].server_id.clone(),
+                    library_scope: None,
+                    library_scopes: Some(scopes.to_vec()),
+                    tags: tags.to_vec(),
+                    mode,
+                    limit: 500,
+                    offset,
+                },
+            )
+            .expect("full-width reference query");
             refs_ms.push(started.elapsed().as_millis() as u64);
             refs_size = page.tracks.len();
         }
@@ -548,8 +601,8 @@ fn explorer_backend_queries_against_disposable_copy() {
     let opened = Instant::now();
     // This opener can migrate/rebuild, but only within the second disposable
     // sandbox. The supplied copy and live Psysonic database stay untouched.
-    let store = LibraryStore::open_path_for_test(&sandbox.database)
-        .expect("open temporary probe sandbox");
+    let store =
+        LibraryStore::open_path_for_test(&sandbox.database).expect("open temporary probe sandbox");
     eprintln!("open_sandbox_ms={}", opened.elapsed().as_millis());
     let scopes = nondeleted_scopes(&store);
     if scopes.is_empty() {
@@ -580,17 +633,21 @@ fn explorer_backend_queries_against_disposable_copy() {
         eprintln!("SKIP: no track-level nonempty 10-tag AND could be derived");
     }
 
-    let scope_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_SCOPE")
-        .unwrap_or_else(|_| "whole".into());
-    let selection_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_SELECTION")
-        .unwrap_or_else(|_| "all".into());
-    let mode_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_MODE")
-        .unwrap_or_else(|_| "all".into());
-    let offsets = std::env::var("PSYSONIC_EXPLORER_PROBE_OFFSETS")
-        .unwrap_or_else(|_| "0,1000,5000".into());
+    let scope_filter =
+        std::env::var("PSYSONIC_EXPLORER_PROBE_SCOPE").unwrap_or_else(|_| "whole".into());
+    let selection_filter =
+        std::env::var("PSYSONIC_EXPLORER_PROBE_SELECTION").unwrap_or_else(|_| "all".into());
+    let mode_filter =
+        std::env::var("PSYSONIC_EXPLORER_PROBE_MODE").unwrap_or_else(|_| "all".into());
+    let offsets =
+        std::env::var("PSYSONIC_EXPLORER_PROBE_OFFSETS").unwrap_or_else(|_| "0,1000,5000".into());
     let offsets: Vec<u32> = offsets
         .split(',')
-        .map(|s| s.trim().parse().expect("offset must be a nonnegative integer"))
+        .map(|s| {
+            s.trim()
+                .parse()
+                .expect("offset must be a nonnegative integer")
+        })
         .collect();
     let mut executed = 0usize;
     for (label, selected_scopes) in &cases {
@@ -603,7 +660,8 @@ fn explorer_backend_queries_against_disposable_copy() {
             &selected_scopes[0].server_id,
             None,
             Some(selected_scopes),
-        ).expect("prepare scope");
+        )
+        .expect("prepare scope");
         eprintln!(
             "scope={label} scope_count={} initial_prepare_ms={}",
             selected_scopes.len(),
@@ -617,7 +675,8 @@ fn explorer_backend_queries_against_disposable_copy() {
                 &selected_scopes[0].server_id,
                 None,
                 Some(selected_scopes),
-            ).expect("warm prepare");
+            )
+            .expect("warm prepare");
             warm_prepare_ms.push(started.elapsed().as_millis() as u64);
         }
         stats("warm_scope_prepare", "ms", &warm_prepare_ms);
@@ -644,7 +703,5 @@ fn explorer_backend_queries_against_disposable_copy() {
         }
     }
     assert!(executed > 0, "no probe cases were selected");
-    eprintln!(
-        "complete_cases={executed}; source copy unchanged; sandbox writes only"
-    );
+    eprintln!("complete_cases={executed}; source copy unchanged; sandbox writes only");
 }

@@ -164,9 +164,7 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 } else {
                     assert!(page.total.is_none());
                 }
-                observed.extend(
-                    page.tracks.into_iter().map(|r| (r.server_id, r.id)),
-                );
+                observed.extend(page.tracks.into_iter().map(|r| (r.server_id, r.id)));
                 assert_eq!(page.has_more, observed.len() < expected_tracks.len());
                 if !page.has_more {
                     break;
@@ -190,7 +188,12 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 .albums
                 .iter()
                 .map(|r| {
-                    (r.server_id.clone(), r.id.clone(), r.song_count, r.duration_sec)
+                    (
+                        r.server_id.clone(),
+                        r.id.clone(),
+                        r.song_count,
+                        r.duration_sec,
+                    )
                 })
                 .collect::<Vec<_>>();
             assert_eq!(full_albums.total, Some(expected_albums.len() as u32));
@@ -216,9 +219,11 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 } else {
                     assert!(page.total.is_none());
                 }
-                observed.extend(page.albums.into_iter().map(|r| {
-                    (r.server_id, r.id, r.song_count, r.duration_sec)
-                }));
+                observed.extend(
+                    page.albums
+                        .into_iter()
+                        .map(|r| (r.server_id, r.id, r.song_count, r.duration_sec)),
+                );
                 assert_eq!(page.has_more, observed.len() < expected_albums.len());
                 if !page.has_more {
                     break;
@@ -281,8 +286,24 @@ fn baseline_filter_before_dedup_retains_lower_priority_only_matching_copy() {
 #[test]
 fn baseline_same_tagged_copies_dedup_with_priority() {
     let store = seed(&[
-        sample("s1", Some("lib-a"), "copy1", "Same Track", "dup", &["Rock"], &["Dreamy"]),
-        sample("s2", Some("lib-b"), "copy2", "Same Track", "dup", &["Rock"], &["Dreamy"]),
+        sample(
+            "s1",
+            Some("lib-a"),
+            "copy1",
+            "Same Track",
+            "dup",
+            &["Rock"],
+            &["Dreamy"],
+        ),
+        sample(
+            "s2",
+            Some("lib-b"),
+            "copy2",
+            "Same Track",
+            "dup",
+            &["Rock"],
+            &["Dreamy"],
+        ),
     ]);
     let scopes = vec![scoped("s1", "lib-a"), scoped("s2", "lib-b")];
     let mut req = track_request(LibraryTagMatchMode::And);
@@ -299,12 +320,8 @@ fn baseline_same_tagged_copies_dedup_with_priority() {
 
 #[test]
 fn baseline_compilation_without_album_artist_keeps_one_physical_album() {
-    let mut first = sample(
-        "s1", Some("lib-a"), "a", "First", "comp", &["Rock"], &[],
-    );
-    let mut second = sample(
-        "s1", Some("lib-a"), "b", "Second", "comp", &[], &["Dreamy"],
-    );
+    let mut first = sample("s1", Some("lib-a"), "a", "First", "comp", &["Rock"], &[]);
+    let mut second = sample("s1", Some("lib-a"), "b", "Second", "comp", &[], &["Dreamy"]);
     first.album_artist = None;
     first.artist = Some("Singer A".into());
     first.artist_id = Some("singer-a".into());
@@ -324,15 +341,25 @@ fn baseline_compilation_without_album_artist_keeps_one_physical_album() {
 #[test]
 fn baseline_albumless_and_null_library_tracks_are_not_silently_discarded() {
     let mut albumless = sample(
-        "s1", Some("lib-a"), "orphan", "Orphan", "ignored", &["Rock"], &["Dreamy"],
+        "s1",
+        Some("lib-a"),
+        "orphan",
+        "Orphan",
+        "ignored",
+        &["Rock"],
+        &["Dreamy"],
     );
     albumless.album_id = None;
     albumless.album = "Unsorted".into();
-    let first = sample(
-        "s1", None, "null-a", "First", "null-album", &["Rock"], &[],
-    );
+    let first = sample("s1", None, "null-a", "First", "null-album", &["Rock"], &[]);
     let second = sample(
-        "s1", None, "null-b", "Second", "null-album", &[], &["Dreamy"],
+        "s1",
+        None,
+        "null-b",
+        "Second",
+        "null-album",
+        &[],
+        &["Dreamy"],
     );
     let store = seed(&[albumless, first, second]);
     let tracks = list_tracks(&store, &track_request(LibraryTagMatchMode::And)).unwrap();
@@ -348,18 +375,33 @@ fn baseline_albumless_and_null_library_tracks_are_not_silently_discarded() {
 #[test]
 fn baseline_exact_library_excludes_other_libraries_and_deleted_tracks() {
     let mut deleted = sample(
-        "s1", Some("lib-a"), "deleted", "Deleted", "deleted-album",
-        &["Rock"], &["Dreamy"],
+        "s1",
+        Some("lib-a"),
+        "deleted",
+        "Deleted",
+        "deleted-album",
+        &["Rock"],
+        &["Dreamy"],
     );
     deleted.deleted = true;
     let store = seed(&[
         sample(
-            "s1", Some("lib-a"), "visible", "Visible", "visible-album",
-            &["Rock"], &["Dreamy"],
+            "s1",
+            Some("lib-a"),
+            "visible",
+            "Visible",
+            "visible-album",
+            &["Rock"],
+            &["Dreamy"],
         ),
         sample(
-            "s1", Some("lib-b"), "elsewhere", "Elsewhere", "other-album",
-            &["Rock"], &["Dreamy"],
+            "s1",
+            Some("lib-b"),
+            "elsewhere",
+            "Elsewhere",
+            "other-album",
+            &["Rock"],
+            &["Dreamy"],
         ),
         deleted,
     ]);
@@ -379,8 +421,24 @@ fn baseline_exact_library_excludes_other_libraries_and_deleted_tracks() {
 #[test]
 fn baseline_unicode_case_normalization_and_sql_collation_are_not_equivalent() {
     let store = seed(&[
-        sample("s1", Some("lib-a"), "upper", "Upper", "a", &["Ärt"], &["Dreamy"]),
-        sample("s1", Some("lib-a"), "lower", "Lower", "b", &["ärt"], &["Dreamy"]),
+        sample(
+            "s1",
+            Some("lib-a"),
+            "upper",
+            "Upper",
+            "a",
+            &["Ärt"],
+            &["Dreamy"],
+        ),
+        sample(
+            "s1",
+            Some("lib-a"),
+            "lower",
+            "Lower",
+            "b",
+            &["ärt"],
+            &["Dreamy"],
+        ),
     ]);
     let mut req = track_request(LibraryTagMatchMode::And);
     req.tags[0].value = "Ärt".into();
@@ -394,8 +452,14 @@ fn baseline_unicode_case_normalization_and_sql_collation_are_not_equivalent() {
     assert_eq!(lower.tracks[0].id, "lower");
 
     req.tags = vec![
-        LibraryTagFilter { kind: LibraryTagKind::Genre, value: "Ärt".into() },
-        LibraryTagFilter { kind: LibraryTagKind::Genre, value: "ärt".into() },
+        LibraryTagFilter {
+            kind: LibraryTagKind::Genre,
+            value: "Ärt".into(),
+        },
+        LibraryTagFilter {
+            kind: LibraryTagKind::Genre,
+            value: "ärt".into(),
+        },
     ];
     // KNOWN BASELINE QUIRK (F10): Unicode folding merges the two tags even
     // though SQLite NOCASE does not make them equivalent.
