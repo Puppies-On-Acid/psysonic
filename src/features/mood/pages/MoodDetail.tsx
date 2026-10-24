@@ -25,6 +25,7 @@ import { MOOD_DETAIL_INPAGE_SCROLL_VIEWPORT_ID } from '@/constants/appScroll';
 import { albumGridWarmCovers } from '@/cover/layoutSizes';
 import { useInpageScrollSentinel } from '@/lib/hooks/useInpageScrollSentinel';
 import { useInpageScrollViewport } from '@/lib/hooks/useInpageScrollViewport';
+import { restoreInpageScrollAfterLayout } from '@/lib/dom/restoreInpageScrollAfterLayout';
 import { useMainstageInpageHeaderTight } from '@/lib/hooks/useMainstageInpageHeaderTight';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { fetchMoodAlbumTotal } from '@/lib/library/moodAlbumBrowse';
@@ -365,11 +366,24 @@ export default function MoodDetail() {
       return;
     }
 
-    // React Compiler immutability rule: intentional imperative mutation of an external/DOM target inside an effect.
-    // eslint-disable-next-line react-hooks/immutability
-    scrollBodyEl.scrollTop = snapshot.scrollTop;
-    snapshot.scrollTop = scrollBodyEl.scrollTop;
-    pendingTabScrollRestoreRef.current = null;
+    // Zero offsets are safe immediately, and must not leave the new tab
+    // temporarily pending while a user begins scrolling it.
+    if (snapshot.scrollTop === 0) {
+      scrollBodyEl.scrollTop = 0;
+      pendingTabScrollRestoreRef.current = null;
+      return;
+    }
+
+    return restoreInpageScrollAfterLayout(scrollBodyEl, {
+      scrollTop: snapshot.scrollTop,
+      hasMore: activeHasMore,
+      loadMore: activeLoadMore,
+      onRestored: restoredTop => {
+        if (pendingTabScrollRestoreRef.current !== view) return;
+        snapshot.scrollTop = restoredTop;
+        pendingTabScrollRestoreRef.current = null;
+      },
+    });
   }, [
     view,
     scrollBodyEl,
@@ -478,9 +492,13 @@ export default function MoodDetail() {
         view === 'albums'
           ? albumScrollSnapshotRef
           : trackScrollSnapshotRef;
-      snapshotRef.current.displayCount = activeDisplayCount;
-      if (scrollBodyEl) {
-        snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+      // A pending album-grid restore must not be overwritten by a fast
+      // second tab click before its virtualized rows have measured.
+      if (pendingTabScrollRestoreRef.current !== view) {
+        snapshotRef.current.displayCount = activeDisplayCount;
+        if (scrollBodyEl) {
+          snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+        }
       }
 
       const params = new URLSearchParams(location.search);

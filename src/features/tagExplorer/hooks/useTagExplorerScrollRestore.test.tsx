@@ -160,6 +160,41 @@ describe('useTagExplorerScrollRestore', () => {
     expect(readTagExplorerScroll(pathname, trackSearch).tracks).toBe(1600);
   });
 
+  it('restores Albums after a late virtual grid height measurement', async () => {
+    writeTagExplorerScroll(pathname, albumSearch, {
+      albums: 1400,
+      tracks: 500,
+      albumDisplayCount: 50,
+      trackDisplayCount: 100,
+    });
+    const { element, setContentHeight } = makeScrollBody();
+    setContentHeight(500);
+
+    const { unmount } = renderHook(() => useTagExplorerScrollRestore({
+      pathname,
+      search: albumSearch,
+      view: 'albums',
+      valid: true,
+      scrollBodyEl: element,
+      displayCount: 50,
+      ready: true,
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      loadMore: vi.fn(),
+    }));
+
+    await new Promise<void>(resolve => {
+      window.requestAnimationFrame(() => resolve());
+    });
+    expect(element.scrollTop).toBe(0);
+
+    setContentHeight(3000);
+    await waitFor(() => expect(element.scrollTop).toBe(1400));
+    expect(readTagExplorerScroll(pathname, albumSearch).albums).toBe(1400);
+    unmount();
+  });
+
   it('reads older scroll snapshots without result counts', () => {
     writeTagExplorerScroll(pathname, albumSearch, {
       albums: 400,

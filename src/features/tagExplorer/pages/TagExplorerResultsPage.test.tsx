@@ -265,6 +265,7 @@ describe('TagExplorerResultsPage', () => {
     fireEvent.scroll(Object.assign(viewport, { scrollTop: 760 }));
     await user.click(screen.getByRole('tab', { name: /Albums/i }));
     expect(await screen.findByText('Album One')).toBeInTheDocument();
+    await waitFor(() => expect(viewport.scrollTop).toBe(420));
     await user.click(screen.getByRole('tab', { name: /Tracks/i }));
 
     expect(await screen.findByText('Scroll Track')).toBeInTheDocument();

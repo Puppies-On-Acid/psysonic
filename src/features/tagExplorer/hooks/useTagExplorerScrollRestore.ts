@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 import type { TagExplorerView } from '@/features/tagExplorer/utils/tagExplorerQuery';
+import { restoreInpageScrollAfterLayout } from '@/lib/dom/restoreInpageScrollAfterLayout';
 import {
   readTagExplorerScroll,
   writeTagExplorerScroll,
@@ -111,27 +112,23 @@ export function useTagExplorerScrollRestore({
     }
     if (!ready || loading || loadingMore) return;
 
-    // Defer measurements until layout has the new tab's rows. A query change
-    // may invalidate previously ready rows during passive effects.
-    const frame = window.requestAnimationFrame(() => {
-      if (pendingRef.current !== pending) return;
-      const availableScroll = Math.max(
-        0,
-        scrollBodyEl.scrollHeight - scrollBodyEl.clientHeight,
-      );
-      if (
-        hasMore &&
-        (displayCount < pending.displayCount || availableScroll < pending.scrollTop)
-      ) {
-        loadMore();
-        return;
-      }
+    if (hasMore && displayCount < pending.displayCount) {
+      loadMore();
+      return;
+    }
 
-      scrollBodyEl.scrollTop = pending.scrollTop;
-      pendingRef.current = null;
-      scrollBodyEl.dispatchEvent(new Event('scroll'));
+    return restoreInpageScrollAfterLayout(scrollBodyEl, {
+      scrollTop: pending.scrollTop,
+      hasMore,
+      loadMore: () => {
+        if (pendingRef.current === pending) loadMore();
+      },
+      onRestored: () => {
+        if (pendingRef.current !== pending) return;
+        pendingRef.current = null;
+        scrollBodyEl.dispatchEvent(new Event('scroll'));
+      },
     });
-    return () => window.cancelAnimationFrame(frame);
   }, [
     contextKey,
     displayCount,

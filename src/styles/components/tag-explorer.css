@@ -120,7 +120,9 @@
    and Mood details. Bound the tag chips so large selections leave room to browse. */
 .tag-explorer-results > .mainstage-inpage-toolbar {
   position: relative;
-  z-index: 1;
+  /* SongListHeader is sticky at z-index: 2. Its sibling must not cover the
+     playlist dropdown nested in this toolbar's stacking context. */
+  z-index: 3;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

@@ -24,6 +24,7 @@ import { useGenreDetailBrowse } from '@/features/genre/hooks/useGenreDetailBrows
 import { useGenreTrackBrowse } from '@/features/genre/hooks/useGenreTrackBrowse';
 import { useInpageScrollSentinel } from '@/lib/hooks/useInpageScrollSentinel';
 import { useInpageScrollViewport } from '@/lib/hooks/useInpageScrollViewport';
+import { restoreInpageScrollAfterLayout } from '@/lib/dom/restoreInpageScrollAfterLayout';
 import { useLongPressAction } from '@/lib/hooks/useLongPressAction';
 import { useMainstageInpageHeaderTight } from '@/lib/hooks/useMainstageInpageHeaderTight';
 import { useAuthStore } from '@/store/authStore';
@@ -343,10 +344,24 @@ export default function GenreDetail() {
       return;
     }
 
-    // eslint-disable-next-line react-hooks/immutability
-    scrollBodyEl.scrollTop = snapshot.scrollTop;
-    snapshot.scrollTop = scrollBodyEl.scrollTop;
-    pendingTabScrollRestoreRef.current = null;
+    // Zero offsets are safe immediately, and must not leave the new tab
+    // temporarily pending while a user begins scrolling it.
+    if (snapshot.scrollTop === 0) {
+      scrollBodyEl.scrollTop = 0;
+      pendingTabScrollRestoreRef.current = null;
+      return;
+    }
+
+    return restoreInpageScrollAfterLayout(scrollBodyEl, {
+      scrollTop: snapshot.scrollTop,
+      hasMore: activeHasMore,
+      loadMore: activeLoadMore,
+      onRestored: restoredTop => {
+        if (pendingTabScrollRestoreRef.current !== view) return;
+        snapshot.scrollTop = restoredTop;
+        pendingTabScrollRestoreRef.current = null;
+      },
+    });
   }, [
     view,
     scrollBodyEl,
@@ -476,9 +491,13 @@ export default function GenreDetail() {
         view === 'albums'
           ? albumScrollSnapshotRef
           : trackScrollSnapshotRef;
-      snapshotRef.current.displayCount = activeDisplayCount;
-      if (scrollBodyEl) {
-        snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+      // A pending album-grid restore must not be overwritten by a fast
+      // second tab click before its virtualized rows have measured.
+      if (pendingTabScrollRestoreRef.current !== view) {
+        snapshotRef.current.displayCount = activeDisplayCount;
+        if (scrollBodyEl) {
+          snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+        }
       }
 
       const params = new URLSearchParams(location.search);
