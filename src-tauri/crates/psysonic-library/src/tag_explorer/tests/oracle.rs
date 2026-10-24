@@ -298,7 +298,7 @@ fn baseline_same_tagged_copies_dedup_with_priority() {
 }
 
 #[test]
-fn baseline_compilation_without_album_artist_is_split_by_track_artist() {
+fn baseline_compilation_without_album_artist_keeps_one_physical_album() {
     let mut first = sample(
         "s1", Some("lib-a"), "a", "First", "comp", &["Rock"], &[],
     );
@@ -307,15 +307,18 @@ fn baseline_compilation_without_album_artist_is_split_by_track_artist() {
     );
     first.album_artist = None;
     first.artist = Some("Singer A".into());
+    first.artist_id = Some("singer-a".into());
     second.album_artist = None;
     second.artist = Some("Singer B".into());
+    second.artist_id = Some("singer-b".into());
     let store = seed(&[first, second]);
     let result = list_albums(&store, &album_request(LibraryTagMatchMode::And)).unwrap();
-    // KNOWN BASELINE QUIRK (F2): one physical compilation becomes two rows.
-    assert_eq!(result.total, Some(2));
-    assert_eq!(result.albums.len(), 2);
-    assert!(result.albums.iter().all(|r| r.id == "comp"));
-    assert!(result.albums.iter().all(|r| r.song_count == Some(1)));
+    // BASELINE (F2 reassessed): distinct track artists without an album artist
+    // still receive a common physical album key. Do not introduce splits.
+    assert_eq!(result.total, Some(1));
+    assert_eq!(result.albums.len(), 1);
+    assert_eq!(result.albums[0].id, "comp");
+    assert_eq!(result.albums[0].song_count, Some(2));
 }
 
 #[test]
