@@ -295,3 +295,9 @@ fn collective_album_predicate_uses_browse_indexes() {
         "album mood lookup was not driven by the mood browse index: {details:?}"
     );
 }
+
+
+
+// Diagnostic-only child modules. Neither is compiled into production code.
+mod oracle;
+mod perf_probe;
