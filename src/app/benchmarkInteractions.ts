@@ -428,9 +428,7 @@ async function runTagExplorerInteractions(
   route: string,
 ): Promise<BenchmarkInteractionResult[]> {
   const rootSelector = EXPLORER_ROOT;
-  const albumsControl = EXPLORER_ALBUMS;
   const tracksControl = EXPLORER_TRACKS;
-  const orControl = EXPLORER_OR;
   const andControl = EXPLORER_AND;
   const results: BenchmarkInteractionResult[] = [];
   const wait = (view: ExplorerBenchmarkView, mode: ExplorerBenchmarkMode) =>
