@@ -70,6 +70,7 @@ export const commands = {
 	libraryGetEntityUserRatings: (refs: EntityUserRatingRefDto[]) => typedError<EntityUserRatingDto[], string>(__TAURI_INVOKE("library_get_entity_user_ratings", { refs })),
 	libraryGetFacts: (serverId: string, trackId: string, factKinds: string[] | null) => typedError<TrackFactDto[], string>(__TAURI_INVOKE("library_get_facts", { serverId, trackId, factKinds })),
 	libraryGetOfflinePath: (serverId: string, trackId: string) => typedError<OfflinePathDto, string>(__TAURI_INVOKE("library_get_offline_path", { serverId, trackId })),
+	libraryTagExplorerTrackRefs: (request: LibraryTagExplorerTrackRefsRequest) => typedError<LibraryTagExplorerTrackRefsResponse, string>(__TAURI_INVOKE("library_tag_explorer_track_refs", { request })),
 	libraryGenreTagsInspect: () => typedError<GenreTagsInspectDto, string>(__TAURI_INVOKE("library_genre_tags_inspect")),
 	libraryGenreTagsRun: () => typedError<null, string>(__TAURI_INVOKE("library_genre_tags_run")),
 	libraryFileMoodTagsInspect: () => typedError<MoodTagsInspectDto, string>(__TAURI_INVOKE("library_file_mood_tags_inspect")),
@@ -1851,6 +1852,35 @@ export type LibraryStatisticsScope = {
 	serverId: string,
 	libraryIds?: string[],
 };
+
+export type LibraryTagExplorerTrackRefDto = {
+	serverId: string,
+	trackId: string,
+};
+
+export type LibraryTagExplorerTrackRefsRequest = {
+	serverId: string,
+	libraryScope?: string | null,
+	libraryScopes?: LibraryScopePair[] | null,
+	tags: LibraryTagFilter[],
+	mode?: LibraryTagMatchMode,
+	limit?: number,
+	offset?: number,
+};
+
+export type LibraryTagExplorerTrackRefsResponse = {
+	tracks: LibraryTagExplorerTrackRefDto[],
+	hasMore: boolean,
+};
+
+export type LibraryTagFilter = {
+	kind: LibraryTagKind,
+	value: string,
+};
+
+export type LibraryTagKind = "genre" | "mood";
+
+export type LibraryTagMatchMode = "or" | "and";
 
 export type LibraryTierDiskHit = {
 	trackId: string,

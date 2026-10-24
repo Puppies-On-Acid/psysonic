@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Risultati per stato d’animo",
   tracksEmpty: "Nessun brano trovato per questo stato d’animo.",
   back: 'Indietro',
+  selectTags: 'Seleziona',
+  cancelSelection: 'Annulla',
+  clearSelection: 'Cancella',
+  selectedTagCount_one: '{{count}} tag selezionato',
+  selectedTagCount_other: '{{count}} tag selezionati',
+  selectionMinimum: 'Seleziona almeno due tag per vedere i risultati combinati.',
+  viewResults: 'Vedi risultati',
+  genreTagLabel: 'Genere',
+  moodTagLabel: 'Atmosfera',
 };

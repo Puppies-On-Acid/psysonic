@@ -20,6 +20,12 @@ interface Props {
   onLoadMore: () => void;
   /** Show a BPM column (Advanced Search when the BPM filter is active). */
   showBpm?: boolean;
+  /** Optional bulk selection; omitted by normal Tracks/Search callers. */
+  selection?: {
+    isSelected: (song: SubsonicSong) => boolean;
+    onToggle: (song: SubsonicSong, rowIndex: number, shift: boolean) => void;
+    label: (song: SubsonicSong, selected: boolean) => string;
+  };
 }
 
 /**
@@ -29,7 +35,14 @@ interface Props {
  * one chrome + paging path (no transform-positioned rows, so the sticky header
  * is never painted over — issue #841).
  */
-export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore, showBpm }: Props) {
+export default function PagedSongList({
+  songs,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  showBpm,
+  selection,
+}: Props) {
   const trackListCoversOn = useTrackListCoverArtEnabled('pages');
   const onLoadMoreRef = useRef(onLoadMore);
   // React Compiler refs rule: ref kept in sync with the latest value for use in effects/handlers/cleanup; not render data.
@@ -58,7 +71,7 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
 
   return (
     <div {...cursor.listProps}>
-      <SongListHeader showBpm={showBpm} />
+      <SongListHeader showBpm={showBpm} selectionMode={!!selection} />
       {songs.map((song, i) => (
         <SongRow
           key={cursorKeys[i]}
@@ -67,6 +80,12 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
           rowIndex={i}
           cursorRowId={cursor.cursorIndex === i ? cursor.cursorRowId : undefined}
           onCursorClick={cursor.setCursorFromClick}
+          selectionMode={!!selection}
+          selected={selection?.isSelected(song) ?? false}
+          onToggleSelection={(rowIndex, shift) => selection?.onToggle(song, rowIndex, shift)}
+          selectionLabel={selection
+            ? selection.label(song, selection.isSelected(song))
+            : undefined}
         />
       ))}
       {hasMore && (
