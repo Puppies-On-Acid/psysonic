@@ -203,14 +203,14 @@ fn alternating(
     size: usize,
 ) -> Option<Vec<LibraryTagFilter>> {
     let mut tags = Vec::with_capacity(size);
-    for i in 0..size {
-        let j = i / 2;
-        let chosen = if i % 2 == 0 { genres.get(j) } else { moods.get(j) };
-        if let Some(tag) = chosen {
-            tags.push(tag.clone());
-        } else {
-            let other = if i % 2 == 0 { moods.get(j) } else { genres.get(j) };
-            if let Some(tag) = other {
+    for i in 0..genres.len().max(moods.len()) {
+        if let Some(tag) = genres.get(i) {
+            if tags.len() < size {
+                tags.push(tag.clone());
+            }
+        }
+        if let Some(tag) = moods.get(i) {
+            if tags.len() < size {
                 tags.push(tag.clone());
             }
         }
