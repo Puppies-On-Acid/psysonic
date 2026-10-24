@@ -369,6 +369,7 @@ export default function MoodDetail() {
     // Zero offsets are safe immediately, and must not leave the new tab
     // temporarily pending while a user begins scrolling it.
     if (snapshot.scrollTop === 0) {
+      // eslint-disable-next-line react-hooks/immutability
       scrollBodyEl.scrollTop = 0;
       pendingTabScrollRestoreRef.current = null;
       return;
