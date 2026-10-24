@@ -582,6 +582,10 @@ fn explorer_backend_queries_against_disposable_copy() {
 
     let scope_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_SCOPE")
         .unwrap_or_else(|_| "whole".into());
+    let selection_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_SELECTION")
+        .unwrap_or_else(|_| "all".into());
+    let mode_filter = std::env::var("PSYSONIC_EXPLORER_PROBE_MODE")
+        .unwrap_or_else(|_| "all".into());
     let offsets = std::env::var("PSYSONIC_EXPLORER_PROBE_OFFSETS")
         .unwrap_or_else(|_| "0,1000,5000".into());
     let offsets: Vec<u32> = offsets
@@ -619,9 +623,15 @@ fn explorer_backend_queries_against_disposable_copy() {
         stats("warm_scope_prepare", "ms", &warm_prepare_ms);
 
         for (selection_name, tags) in &selections {
+            if selection_filter != "all" && selection_filter != *selection_name {
+                continue;
+            }
             eprintln!("selection={selection_name} (values withheld)");
             for mode in [LibraryTagMatchMode::Or, LibraryTagMatchMode::And] {
                 if selection_name == "nonempty-10-AND" && mode == LibraryTagMatchMode::Or {
+                    continue;
+                }
+                if mode_filter != "all" && mode_filter != format!("{mode:?}").to_lowercase() {
                     continue;
                 }
                 for view in [View::Albums, View::Tracks] {
