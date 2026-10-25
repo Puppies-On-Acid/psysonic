@@ -153,6 +153,68 @@ fn copy_fingerprints(parent: &Path) -> Vec<(String, u64, u64)> {
     .collect()
 }
 
+// Opening the *staged sandbox* with read-only flags records the schema
+// before LibraryStore::open_path_for_test can apply any migrations.
+fn sandbox_schema_head(path: &Path) -> Option<i64> {
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+        row.get::<_, Option<i64>>(0)
+    })
+    .ok()
+    .flatten()
+}
+
+fn report_scope_metadata(store: &LibraryStore, scopes: &[LibraryScopePair]) {
+    let (cte, binds) = scope_cte_sql(scopes);
+    let scoped_sql = format!(
+        "{cte} SELECT COUNT(*), COUNT(ck.cluster_key) \
+         FROM scoped_track s \
+         INNER JOIN track t ON t.rowid = s.rowid \
+         LEFT JOIN cluster.track_cluster_key ck \
+           ON ck.server_id = t.server_id AND ck.track_id = t.id"
+    );
+    let (sqlite_version, has_stat1, schema_head, scoped_tracks, keyed_tracks) = store
+        .with_read_conn(|conn| {
+            let sqlite_version: String =
+                conn.query_row("SELECT sqlite_version()", [], |row| row.get(0))?;
+            let has_stat1: i64 = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1')",
+                [],
+                |row| row.get(0),
+            )?;
+            let schema_head: Option<i64> = conn.query_row(
+                "SELECT MAX(version) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )?;
+            let (scoped_tracks, keyed_tracks): (i64, i64) = conn.query_row(
+                &scoped_sql,
+                params_from_iter(binds.iter()),
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            Ok((
+                sqlite_version,
+                has_stat1,
+                schema_head,
+                scoped_tracks,
+                keyed_tracks,
+            ))
+        })
+        .expect("read-only aggregate probe metadata");
+    let server_count = scopes
+        .iter()
+        .map(|scope| scope.server_id.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    eprintln!(
+        "  sqlite_version={sqlite_version} sqlite_stat1_present={} \
+         schema_head_after={schema_head:?} scoped_tracks={scoped_tracks} \
+         keyed_scoped_tracks={keyed_tracks} selected_scopes={} selected_servers={server_count}",
+        has_stat1 != 0,
+        scopes.len()
+    );
+}
+
 fn nondeleted_scopes(store: &LibraryStore) -> Vec<LibraryScopePair> {
     store
         .with_read_conn(|conn| {
@@ -401,7 +463,8 @@ fn stats(label: &str, unit: &str, values: &[u64]) {
     let mut sorted = values.to_vec();
     sorted.sort_unstable();
     eprintln!(
-        "    {label}: median_{unit}={} max_{unit}={}",
+        "    {label}: min_{unit}={} median_{unit}={} max_{unit}={} samples_{unit}={values:?}",
+        sorted[0],
         sorted[sorted.len() / 2],
         sorted[sorted.len() - 1],
     );
@@ -603,7 +666,9 @@ fn run_one(
     stats("row_to_dto_conversion", "us", &mapping_us);
     stats("public_API_total", "ms", &api_ms);
 
-    if matches!(view, View::Tracks) {
+    // Reference enumeration always starts at zero and traverses the entire
+    // matching set. Repeating it for every deep page multiplies run cost.
+    if matches!(view, View::Tracks) && offset == 0 {
         let mut refs_ms = Vec::new();
         let mut refs_size = 0usize;
         for _ in 0..RUNS {
@@ -638,6 +703,11 @@ fn run_one(
                 collected.len(),
                 "duplicate playlist reference"
             );
+            assert_eq!(
+                collected.len() as i64,
+                result_count,
+                "Select All references must equal the independently measured exact count"
+            );
             refs_ms.push(started.elapsed().as_millis() as u64);
             refs_size = collected.len();
         }
@@ -660,6 +730,8 @@ fn explorer_backend_queries_against_disposable_copy() {
     let source_before = copy_fingerprints(source_parent);
     let sandbox = stage_in_temporary_sandbox(&db);
     eprintln!("sandbox_stage_ms={}", staged_at.elapsed().as_millis());
+    let schema_before = sandbox_schema_head(&sandbox.database);
+    eprintln!("sandbox_schema_head_before={schema_before:?}");
     let opened = Instant::now();
     // This opener can migrate/rebuild, but only within the second disposable
     // sandbox. The supplied copy and live Psysonic database stay untouched.
@@ -729,6 +801,7 @@ fn explorer_backend_queries_against_disposable_copy() {
             selected_scopes.len(),
             started.elapsed().as_millis()
         );
+        report_scope_metadata(&store, selected_scopes);
         let mut warm_prepare_ms = Vec::new();
         for _ in 0..RUNS {
             let started = Instant::now();
