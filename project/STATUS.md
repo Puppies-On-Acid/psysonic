@@ -49,7 +49,7 @@ Those are **merged upstream**, not outstanding PRs. They do **not** mean every E
 | PSY-009 | Formal Explorer/Genre Tracks runtime benchmarks | **Deferred / not completed** as upstream PR-quality gate | Repeatable main-vs-feature head comparisons, including multi-tag OR/AND and Albums/Tracks |
 | PSY-010 | Explorer docs, exact-head CI/review, PR package | **Pending** | Complete after correctness/perf findings and seek owner approval for PR |
 | PSY-011 | Weighted sorting idea | **Deferred and NOT authorized for implementation** | Revisit only on owner direction after current discovery work |
-| PSY-012 | Project governance/handoff setup | Hub branch created; initial v0.1 documentation committed separately | Owner ratifies governance/branch choice and past-work inventory |
+| PSY-012 | Project governance/handoff setup | **Hub v0.1 ratified by owner 2026-10-24**, including meta/project-hub and factual update permissions (D-012) | Continue maintaining evidence-based handoffs; verify historical work independently when relevant |
 
 ## Known watch items (not all are active confirmed defects)
 

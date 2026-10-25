@@ -15,7 +15,7 @@
 | PSY-009 | Explorer benchmark program | Plan and benchmark routes exist, formal before/after still **pending** | Exact-base/head comparable runs incl. 2/5/10 tags, OR/AND, Albums/Tracks, cold/warm |
 | PSY-010 | Explorer contribution documentation + independent review | Not completed | After perf gate, review and obtain specific owner PR authorization |
 | PSY-011 | Weighted sorting | Brainstormed; explicitly postponed | Not authorized to implement |
-| PSY-012 | Governance / living handoff | New docs-only branch meta/project-hub; this v0.1 package | Owner review/ratification; ongoing factual maintenance |
+| PSY-012 | Governance / living handoff | **Hub v0.1 owner-ratified 2026-10-24**; documentation-only branch and decision/quality framework approved (D-012) | Ongoing factual maintenance; verify existing historical entries against live evidence as needed |
 | PSY-013 | Queue independence regression watch | [#1732](https://github.com/Psysonic/psysonic/pull/1732) merged upstream | Recheck device-order case if reproducible; do not assume merged == fixed in every configuration |
 
 ## Workstream PSY-002 / PSY-003 — evaluation inventory

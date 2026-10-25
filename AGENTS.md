@@ -1,6 +1,6 @@
 # Psysonic Project Hub — AI/contributor operating instructions
 
-**Scope:** development, testing, documentation, upstream contributions, and personal integration work for Psysonic ONLY. **Owner:** the user of the Puppies-On-Acid fork. **Status:** initial project-governance framework v0.1, awaiting explicit owner ratification of the proposed branch name and structure. This document is guidance, NOT standing permission to make engineering changes.
+**Scope:** development, testing, documentation, upstream contributions, and personal integration work for Psysonic ONLY. **Owner:** the user of the Puppies-On-Acid fork. **Status:** project-governance framework v0.1, ratified by the owner on 2026-10-24 (see [DECISIONS](https://github.com/Puppies-On-Acid/psysonic/blob/meta/project-hub/project/DECISIONS.md), D-012). This document is guidance, NOT standing permission to make engineering changes.
 
 **Project hub branch:** meta/project-hub, documentation-only, intentionally separate from executable development branches. **Important:** its AGENTS.md is NOT automatically present when an assistant checks out personal/integration or another code branch. Assistants must explicitly read this GitHub branch or fetch/show the file before working on code.
 
@@ -52,7 +52,7 @@ A high-quality change must: (1) solve an owner-approved user problem without unr
 
 - **Factual housekeeping:** during an active, user-initiated session, the assistant may update STATUS, WORKSTREAMS, and HISTORY **only** to accurately record verified progress, owner-reported tests with labels, new source-linked upstream merges, blockers and next actions. Do not rewrite historical approvals or hide outstanding work. This is not permission for background monitoring.
 - **Requires explicit owner approval:** changes to AGENTS.md, quality policy, project scope, major decisions, accepted evaluation criteria, acceptance requirements, feature scope or security; code/feature branch mutations without task authorization; PR opening, merging, deleting branches or releases. Propose the diff first.
-- This v0.1 setup reflects the current request; its proposed standing rules and branch naming still require owner ratification. Record that ratification in DECISIONS when granted.
+- The owner ratified the v0.1 branch name, structure, governance and quality gates on 2026-10-24 (DECISIONS.md D-012). That approval is not permission for unrelated code, PR, merge or repository-settings changes.
 - Issues are **disabled on the fork** as checked 2026-10-24. The versioned STATUS.md is therefore the single living handoff. Do not create a parallel status issue or change repository settings without owner approval.
 
 For working without checking out this branch, see [HOW_TO_USE](https://github.com/Puppies-On-Acid/psysonic/blob/meta/project-hub/project/HOW_TO_USE.md). Always re-read the latest file on the docs branch rather than relying on a copied snapshot.
