@@ -18,9 +18,19 @@ interface Props {
   dropDown?: boolean;
   triggerId?: string;
   serverId?: string;
+  /** Called only when a playlist mutation actually succeeds. */
+  onSuccess?: () => void;
 }
 
-export function AddToPlaylistSubmenu({ songIds, resolveSongIds, onDone, dropDown, triggerId, serverId }: Props) {
+export function AddToPlaylistSubmenu({
+  songIds,
+  resolveSongIds,
+  onDone,
+  dropDown,
+  triggerId,
+  serverId,
+  onSuccess,
+}: Props) {
   const { t } = useTranslation();
   const subRef = useRef<HTMLDivElement>(null);
   const newNameRef = useRef<HTMLInputElement>(null);
@@ -80,7 +90,10 @@ export function AddToPlaylistSubmenu({ songIds, resolveSongIds, onDone, dropDown
     try {
       const result = await addTracksToPlaylistWithDedup(pl.id, pl.name, ids, t, ownerServerId);
       showAddTracksDedupToast(t, pl.name, result);
-      if (result.outcome !== 'skipped') touchPlaylist(pl.id, ownerServerId);
+      if (result.outcome !== 'skipped') {
+        touchPlaylist(pl.id, ownerServerId);
+        onSuccess?.();
+      }
     } catch {
       showToast(t('playlists.addError'), 3000, 'error');
     }
@@ -96,6 +109,7 @@ export function AddToPlaylistSubmenu({ songIds, resolveSongIds, onDone, dropDown
       const pl = await createPlaylist(name, ids, ownerServerId);
       if (pl?.id) {
         showToast(t('playlists.createAndAddSuccess', { count: ids.length, playlist: pl.name || name }));
+        onSuccess?.();
       }
     } catch {
       showToast(t('playlists.createError'), 3000, 'error');
