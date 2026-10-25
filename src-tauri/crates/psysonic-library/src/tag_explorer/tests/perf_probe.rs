@@ -156,7 +156,8 @@ fn copy_fingerprints(parent: &Path) -> Vec<(String, u64, u64)> {
 // Opening the *staged sandbox* with read-only flags records the schema
 // before LibraryStore::open_path_for_test can apply any migrations.
 fn sandbox_schema_head(path: &Path) -> Option<i64> {
-    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let conn =
+        Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
     conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
         row.get::<_, Option<i64>>(0)
     })
@@ -182,16 +183,14 @@ fn report_scope_metadata(store: &LibraryStore, scopes: &[LibraryScopePair]) {
                 [],
                 |row| row.get(0),
             )?;
-            let schema_head: Option<i64> = conn.query_row(
-                "SELECT MAX(version) FROM schema_migrations",
-                [],
-                |row| row.get(0),
-            )?;
-            let (scoped_tracks, keyed_tracks): (i64, i64) = conn.query_row(
-                &scoped_sql,
-                params_from_iter(binds.iter()),
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
+            let schema_head: Option<i64> =
+                conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                    row.get(0)
+                })?;
+            let (scoped_tracks, keyed_tracks): (i64, i64) =
+                conn.query_row(&scoped_sql, params_from_iter(binds.iter()), |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
             Ok((
                 sqlite_version,
                 has_stat1,
