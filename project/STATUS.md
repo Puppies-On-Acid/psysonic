@@ -4,9 +4,9 @@
 
 ## Current priority and working constraints
 
-**Active priority:** complete the already approved **Explorer Optimization Plan v1.1, Slice 0A/0B diagnostics only**, then review the findings with the owner. Slice 0A builds correctness expectations/oracle; Slice 0B is a read-only performance probe against a **disposable SQLite copy**. Owner approved these diagnostic slices on 2026-10-24. **No production-query optimization, live library/database mutation, new schema, changed UX, PR, or deployment is approved by that plan.** The current GitHub check did not independently establish the local diagnostic files or outputs; recorded observations below are owner/conversation-reported.
+**Active priority:** review the results of approved **Explorer Optimization Plan v1.1, Slice 0A/0B diagnostics only** with the owner, then decide whether any scoped optimization should be proposed. Slice 0A builds correctness expectations/oracle; Slice 0B is a read-only performance probe against a **disposable SQLite copy**. Owner approved these diagnostic slices on 2026-10-24. **No production-query optimization, live library/database mutation, new schema, changed UX, PR, or deployment is approved by that plan.** The current GitHub check did not independently establish the local diagnostic files or outputs; recorded observations below are owner/conversation-reported.
 
-**Reported diagnostic progress:** local five-run probes examined two-tag OR whole-library (~3,704 ms tracks), two-tag OR exact-library (~2,097 ms), five-tag AND whole-library (~1,294 ms), and ten-tag OR whole-library (~4,847 ms), without reported lock waits. These exploratory timings are **not** the upstream-required before/after PR benchmark. Additional deep/rare/nonempty ten-tag diagnostic scenarios were pending in the previous handoff. Confirm latest local state before treating those as still outstanding.
+**Reported diagnostic progress (2026-10-24):** Slice 0A correctness oracle was reported passing (17 cases), and Slice 0B five-run read-only disposable-copy diagnostics were reported complete: 2-tag OR whole Albums/Tracks medians 1,691/3,704 ms; 5-tag AND 1,391/1,294 ms; 10-tag OR 3,089/4,847 ms; 10-tag AND 1,217/1,421 ms; five rare AND 851/1,071 ms; nonempty 10-tag AND 938/1,132 ms. Deep track pagination was reported at 2,443 to 2,716 ms (offset 0 to 5000), and reference probes at 2,516 to 2,862 ms. **These are owner/conversation-reported local diagnostic results, not independently audited artifacts or the upstream-required base-vs-head runtime benchmark.**
 
 **Owner's explicit development boundaries:** Psysonic only; preserve the existing integration and feature/backup branches; do not create a PR without first asking; do not open an unrelated upstream change while finishing Explorer; complete representative benchmarks before the Explorer PR/docs stage.
 
@@ -45,7 +45,7 @@ Those are **merged upstream**, not outstanding PRs. They do **not** mean every E
 | PSY-005 | Playlist membership column/access | Integrated in personal/integration | Regression checks, assess standalone upstream PR and benchmarks |
 | PSY-006 | Independent tab scroll state; sticky toolbar; Explorer usability polish | Integrated; owner reported correct navigation/scroll behavior previously | Check latest integration and auto-refresh interaction |
 | PSY-007 | Centralize window-kind detection | Refactor integrated into personal/integration | Check import/contracts/tests before separate PR decision |
-| PSY-008 | Explorer Optimization Plan v1.1: Slice 0A/0B only | Owner-approved diagnostics; local probe results reported; not confirmed pushed | Finish remaining read-only probes and owner review **before proposing optimization** |
+| PSY-008 | Explorer Optimization Plan v1.1: Slice 0A/0B only | Owner-approved diagnostics, reported complete locally; no diagnostic artifacts independently verified on GitHub | Review correctness and performance findings with owner **before proposing optimization** |
 | PSY-009 | Formal Explorer/Genre Tracks runtime benchmarks | **Deferred / not completed** as upstream PR-quality gate | Repeatable main-vs-feature head comparisons, including multi-tag OR/AND and Albums/Tracks |
 | PSY-010 | Explorer docs, exact-head CI/review, PR package | **Pending** | Complete after correctness/perf findings and seek owner approval for PR |
 | PSY-011 | Weighted sorting idea | **Deferred and NOT authorized for implementation** | Revisit only on owner direction after current discovery work |
@@ -61,7 +61,7 @@ Those are **merged upstream**, not outstanding PRs. They do **not** mean every E
 
 ## Next action (one action, no implied permission)
 
-**Finish / reconcile the approved Slice 0A/0B read-only diagnostic matrix** on a disposable DB copy, preserving correctness oracle and before-change measurements, then present the findings and candidate optimization choices for explicit owner approval. Do **not** implement an optimization merely because the probe suggests a hotspot.
+**Present and review the reported completed Slice 0A/0B diagnostic matrix** and correctness oracle, identify material query hotspots, and offer only scoped optimization options for explicit owner approval. Ask for missing local files/output if independent verification is needed. Do **not** implement an optimization merely because the probe suggests a hotspot.
 
 After that, the pending sequence is: approve specific optimization if justified → implement/test only approved work → formal baseline-vs-head Explorer benchmarks → document UX and tests → independent read-only Claude Code review at exact SHA → ask the owner before opening any PR.
 
