@@ -825,6 +825,37 @@ pub async fn library_list_tracks_by_genre(
     .await
 }
 
+// NOT specta-collected: responses contain raw-json DTOs.
+#[tauri::command]
+pub async fn library_tag_explorer_albums(
+    runtime: State<'_, LibraryRuntime>,
+    request: crate::dto::LibraryTagExplorerAlbumsRequest,
+) -> Result<crate::dto::LibraryTagExplorerAlbumsResponse, String> {
+    let store = Arc::clone(&runtime.store);
+    library_spawn_blocking(move || crate::tag_explorer::list_albums(&store, &request)).await
+}
+
+// NOT specta-collected: responses contain raw-json DTOs.
+#[tauri::command]
+pub async fn library_tag_explorer_tracks(
+    runtime: State<'_, LibraryRuntime>,
+    request: crate::dto::LibraryTagExplorerTracksRequest,
+) -> Result<crate::dto::LibraryTagExplorerTracksResponse, String> {
+    let store = Arc::clone(&runtime.store);
+    library_spawn_blocking(move || crate::tag_explorer::list_tracks(&store, &request)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn library_tag_explorer_track_refs(
+    runtime: State<'_, LibraryRuntime>,
+    request: crate::dto::LibraryTagExplorerTrackRefsRequest,
+) -> Result<crate::dto::LibraryTagExplorerTrackRefsResponse, String> {
+    let store = Arc::clone(&runtime.store);
+    library_spawn_blocking(move || crate::tag_explorer::list_track_refs(&store, &request)).await
+}
+
+
 // NOT specta-collected: response contains LibraryAlbumDto.raw_json (serde_json::Value).
 #[tauri::command]
 pub async fn library_list_albums_by_mood(

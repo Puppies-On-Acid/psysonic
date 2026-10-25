@@ -67,6 +67,7 @@ pub mod starred_browse;
 pub mod statistics;
 pub mod store;
 pub mod sync;
+pub mod tag_explorer;
 pub(crate) mod track_fts;
 
 pub use payload::{LibrarySyncIdlePayload, LibrarySyncProgressPayload};
