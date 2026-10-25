@@ -11,7 +11,7 @@
 | PSY-005 | Track playlist membership UI | Feature branch + integrated daily-driver behavior | Upstream compatibility and performance checks, owner PR decision |
 | PSY-006 | Scroll, selection toolbar and navigation polish | Feature changes and tests integrated; previous owner smoke passed | Regression on latest integration and prior Moods auto-refresh report |
 | PSY-007 | Centralized window-kind logic | Refactor branch and integration commit be6b1eaf3da07583998193ec8aa0fae92e338906 | Separate review/PR decision, verify tests and i18n unaffected |
-| PSY-008 | Optimization Plan v1.1 Slice 0A correctness / 0B disposable-DB probe | Owner approved 2026-10-24, local diagnostics reported | Finish rare/deep/10-tag cases; keep read-only; **no production optimization or PR authorization** |
+| PSY-008 | Optimization Plan v1.1 Slice 0A correctness / 0B disposable-DB probe | Owner approved 2026-10-24; correctness oracle and five-run probe matrix reported complete locally | Review and verify local evidence as needed; **no production optimization or PR authorization** |
 | PSY-009 | Explorer benchmark program | Plan and benchmark routes exist, formal before/after still **pending** | Exact-base/head comparable runs incl. 2/5/10 tags, OR/AND, Albums/Tracks, cold/warm |
 | PSY-010 | Explorer contribution documentation + independent review | Not completed | After perf gate, review and obtain specific owner PR authorization |
 | PSY-011 | Weighted sorting | Brainstormed; explicitly postponed | Not authorized to implement |
@@ -27,7 +27,8 @@ These are feature checks discussed and/or owner-smoked on prior branches, **not*
 - [x] Independent browse-tab scroll restoration — prior owner manual validation.
 - [x] Joined code present in personal/integration after October 23 integration rebuild — GitHub commit evidence.
 - [ ] Reconfirm combined functionality on the **current feature PR candidate head** (select exact branch/SHA).
-- [ ] Complete approved read-only diagnostic probes and review correctness oracle (PSY-008).
+- [x] Complete approved read-only diagnostics — **owner/conversation-reported**, not yet independently reproduced from raw artifacts (PSY-008).
+- [ ] Review diagnostic findings, confirm target SQL plans and risks, and explicitly decide whether optimization should begin.
 - [ ] Obtain owner approval before any production query optimization.
 - [ ] Execute and analyze **formal upstream-prescribed runtime benchmark** (PSY-009).
 - [ ] Capture exact-head type/lint/dependency/frontend/Rust/coverage/CI evidence as applicable.
