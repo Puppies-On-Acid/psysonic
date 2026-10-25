@@ -158,12 +158,21 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 .iter()
                 .map(|r| (r.server_id.clone(), r.id.clone()))
                 .collect::<Vec<_>>();
-            assert_eq!(actual_tracks, expected_tracks, "{mode:?} {tag_count} golden tracks");
+            assert_eq!(
+                actual_tracks, expected_tracks,
+                "{mode:?} {tag_count} golden tracks"
+            );
             assert_eq!(full_tracks.total, Some(expected_tracks.len() as u32));
             for (&i, row) in expected_indices.iter().zip(&full_tracks.tracks) {
                 assert_eq!(row.title, format!("Track {i:03}"));
-                assert_eq!(row.album_id.as_deref(), Some(format!("matrix-album-{i:03}").as_str()));
-                assert_eq!(row.library_id.as_deref(), Some(if i % 2 == 0 { "lib-a" } else { "lib-b" }));
+                assert_eq!(
+                    row.album_id.as_deref(),
+                    Some(format!("matrix-album-{i:03}").as_str())
+                );
+                assert_eq!(
+                    row.library_id.as_deref(),
+                    Some(if i % 2 == 0 { "lib-a" } else { "lib-b" })
+                );
                 assert_eq!(row.artist.as_deref(), Some("Artist"));
                 assert_eq!(row.duration_sec, 200);
                 assert_eq!(row.year, Some(2000));
@@ -231,9 +240,19 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
             let actual_albums = full_albums
                 .albums
                 .iter()
-                .map(|r| (r.server_id.clone(), r.id.clone(), r.song_count, r.duration_sec))
+                .map(|r| {
+                    (
+                        r.server_id.clone(),
+                        r.id.clone(),
+                        r.song_count,
+                        r.duration_sec,
+                    )
+                })
                 .collect::<Vec<_>>();
-            assert_eq!(actual_albums, expected_albums, "{mode:?} {tag_count} golden albums");
+            assert_eq!(
+                actual_albums, expected_albums,
+                "{mode:?} {tag_count} golden albums"
+            );
             assert_eq!(full_albums.total, Some(expected_albums.len() as u32));
             for (&i, row) in expected_indices.iter().zip(&full_albums.albums) {
                 assert_eq!(row.name, format!("Album matrix-album-{i:03}"));
@@ -367,22 +386,53 @@ fn baseline_same_tagged_copies_dedup_with_priority() {
     assert_eq!(albums.albums[0].server_id, "s1");
 }
 
-
 #[test]
 fn baseline_reversing_scope_priority_changes_duplicate_owner_not_result_order() {
     let store = seed(&[
-        sample("s1", Some("lib-a"), "a-copy", "Alpha", "dup", &["Rock"], &["Dreamy"]),
-        sample("s2", Some("lib-b"), "b-copy", "Alpha", "dup", &["Rock"], &["Dreamy"]),
-        sample("s3", Some("lib-c"), "other", "Zulu", "other", &["Rock"], &["Dreamy"]),
+        sample(
+            "s1",
+            Some("lib-a"),
+            "a-copy",
+            "Alpha",
+            "dup",
+            &["Rock"],
+            &["Dreamy"],
+        ),
+        sample(
+            "s2",
+            Some("lib-b"),
+            "b-copy",
+            "Alpha",
+            "dup",
+            &["Rock"],
+            &["Dreamy"],
+        ),
+        sample(
+            "s3",
+            Some("lib-c"),
+            "other",
+            "Zulu",
+            "other",
+            &["Rock"],
+            &["Dreamy"],
+        ),
     ]);
     for (scopes, expected_owner, expected_id) in [
         (
-            vec![scoped("s1", "lib-a"), scoped("s2", "lib-b"), scoped("s3", "lib-c")],
+            vec![
+                scoped("s1", "lib-a"),
+                scoped("s2", "lib-b"),
+                scoped("s3", "lib-c"),
+            ],
             "s1",
             "a-copy",
         ),
         (
-            vec![scoped("s2", "lib-b"), scoped("s1", "lib-a"), scoped("s3", "lib-c")],
+            vec![
+                scoped("s2", "lib-b"),
+                scoped("s1", "lib-a"),
+                scoped("s3", "lib-c"),
+            ],
             "s2",
             "b-copy",
         ),
@@ -392,7 +442,11 @@ fn baseline_reversing_scope_priority_changes_duplicate_owner_not_result_order() 
         let tracks = list_tracks(&store, &track_req).unwrap();
         assert_eq!(tracks.total, Some(2));
         assert_eq!(
-            tracks.tracks.iter().map(|t| (t.server_id.as_str(), t.id.as_str())).collect::<Vec<_>>(),
+            tracks
+                .tracks
+                .iter()
+                .map(|t| (t.server_id.as_str(), t.id.as_str()))
+                .collect::<Vec<_>>(),
             vec![(expected_owner, expected_id), ("s3", "other")]
         );
         assert_eq!(
@@ -408,7 +462,11 @@ fn baseline_reversing_scope_priority_changes_duplicate_owner_not_result_order() 
         let albums = list_albums(&store, &album_req).unwrap();
         assert_eq!(albums.total, Some(2));
         assert_eq!(
-            albums.albums.iter().map(|a| (a.server_id.as_str(), a.id.as_str(), a.song_count)).collect::<Vec<_>>(),
+            albums
+                .albums
+                .iter()
+                .map(|a| (a.server_id.as_str(), a.id.as_str(), a.song_count))
+                .collect::<Vec<_>>(),
             vec![(expected_owner, "dup", Some(1)), ("s3", "other", Some(1))]
         );
     }
@@ -418,17 +476,54 @@ fn baseline_reversing_scope_priority_changes_duplicate_owner_not_result_order() 
 fn baseline_collective_album_and_across_libraries_and_servers_has_golden_metadata() {
     let store = seed(&[
         sample("s1", Some("lib-a"), "a", "Alpha", "album-a", &["Rock"], &[]),
-        sample("s1", Some("lib-a"), "b", "Bravo", "album-a", &[], &["Dreamy"]),
-        sample("s1", Some("lib-b"), "c", "Charlie", "album-b", &["Rock"], &["Dreamy"]),
-        sample("s2", Some("lib-c"), "d", "Delta", "album-c", &["Rock"], &["Dreamy"]),
+        sample(
+            "s1",
+            Some("lib-a"),
+            "b",
+            "Bravo",
+            "album-a",
+            &[],
+            &["Dreamy"],
+        ),
+        sample(
+            "s1",
+            Some("lib-b"),
+            "c",
+            "Charlie",
+            "album-b",
+            &["Rock"],
+            &["Dreamy"],
+        ),
+        sample(
+            "s2",
+            Some("lib-c"),
+            "d",
+            "Delta",
+            "album-c",
+            &["Rock"],
+            &["Dreamy"],
+        ),
     ]);
-    let scopes = vec![scoped("s1", "lib-a"), scoped("s1", "lib-b"), scoped("s2", "lib-c")];
+    let scopes = vec![
+        scoped("s1", "lib-a"),
+        scoped("s1", "lib-b"),
+        scoped("s2", "lib-c"),
+    ];
     let mut album_req = album_request(LibraryTagMatchMode::And);
     album_req.library_scopes = Some(scopes.clone());
     let albums = list_albums(&store, &album_req).unwrap();
     assert_eq!(albums.total, Some(3));
     assert_eq!(
-        albums.albums.iter().map(|a| (a.server_id.as_str(), a.id.as_str(), a.song_count, a.duration_sec)).collect::<Vec<_>>(),
+        albums
+            .albums
+            .iter()
+            .map(|a| (
+                a.server_id.as_str(),
+                a.id.as_str(),
+                a.song_count,
+                a.duration_sec
+            ))
+            .collect::<Vec<_>>(),
         vec![
             ("s1", "album-a", Some(2), Some(400)),
             ("s1", "album-b", Some(1), Some(200)),
@@ -441,7 +536,11 @@ fn baseline_collective_album_and_across_libraries_and_servers_has_golden_metadat
     let tracks = list_tracks(&store, &track_req).unwrap();
     assert_eq!(tracks.total, Some(2));
     assert_eq!(
-        tracks.tracks.iter().map(|t| (t.server_id.as_str(), t.id.as_str())).collect::<Vec<_>>(),
+        tracks
+            .tracks
+            .iter()
+            .map(|t| (t.server_id.as_str(), t.id.as_str()))
+            .collect::<Vec<_>>(),
         vec![("s1", "c"), ("s2", "d")]
     );
     assert_eq!(

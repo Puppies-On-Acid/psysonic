@@ -18,9 +18,9 @@ use crate::dto::{LibraryAlbumDto, LibraryScopePair, LibraryTrackDto};
 use crate::repos::row_to_track_row;
 use crate::scope_merge::{scope_cte_sql, ALBUM_DEDUP_KEY, ALBUM_PICK_KEY, TRACK_DEDUP_KEY};
 use rusqlite::{params_from_iter, Connection, OptionalExtension};
-use std::path::{Path, PathBuf};
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 const RUNS: usize = 5;
@@ -137,15 +137,20 @@ fn checked_copy_path() -> Option<PathBuf> {
 }
 
 fn copy_fingerprints(parent: &Path) -> Vec<(String, u64, u64)> {
-    ["library.sqlite", "library.sqlite-wal", "library-cluster.db", "library-cluster.db-wal"]
-        .iter()
-        .filter_map(|name| {
-            let data = std::fs::read(parent.join(name)).ok()?;
-            let mut hasher = DefaultHasher::new();
-            data.hash(&mut hasher);
-            Some(((*name).to_string(), data.len() as u64, hasher.finish()))
-        })
-        .collect()
+    [
+        "library.sqlite",
+        "library.sqlite-wal",
+        "library-cluster.db",
+        "library-cluster.db-wal",
+    ]
+    .iter()
+    .filter_map(|name| {
+        let data = std::fs::read(parent.join(name)).ok()?;
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        Some(((*name).to_string(), data.len() as u64, hasher.finish()))
+    })
+    .collect()
 }
 
 fn nondeleted_scopes(store: &LibraryStore) -> Vec<LibraryScopePair> {
@@ -317,54 +322,58 @@ fn build_query(
     } else {
         format!("{base_join} AND {where_sql}")
     };
-    let count_sql;
-    let page_sql;
-    if layer1 {
-        count_sql = format!("{cte} SELECT COUNT(*) {base}");
-        page_sql = format!(
-            "{cte} SELECT {} {base} \
-             ORDER BY t.title COLLATE NOCASE ASC, t.artist COLLATE NOCASE ASC, \
-                      t.album COLLATE NOCASE ASC, t.id ASC LIMIT ? OFFSET ?",
-            crate::search::aliased_track_columns("t"),
-        );
+    let (count_sql, page_sql) = if layer1 {
+        (
+            format!("{cte} SELECT COUNT(*) {base}"),
+            format!(
+                "{cte} SELECT {} {base} \
+                 ORDER BY t.title COLLATE NOCASE ASC, t.artist COLLATE NOCASE ASC, \
+                          t.album COLLATE NOCASE ASC, t.id ASC LIMIT ? OFFSET ?",
+                crate::search::aliased_track_columns("t"),
+            ),
+        )
     } else if matches!(view, View::Tracks) {
-        count_sql = format!("{cte} SELECT COUNT(DISTINCT {TRACK_DEDUP_KEY}) {base}");
-        page_sql = format!(
-            "{cte}, ranked AS ( \
-               SELECT {}, s.pr, {TRACK_DEDUP_KEY} AS track_dedup, \
-                      ROW_NUMBER() OVER (PARTITION BY {TRACK_DEDUP_KEY} \
-                      ORDER BY s.pr ASC, t.id ASC) AS rn \
-               {base} \
-             ) SELECT {} FROM ranked WHERE rn = 1 \
-             ORDER BY title COLLATE NOCASE ASC, artist COLLATE NOCASE ASC, \
-                      album COLLATE NOCASE ASC, id ASC LIMIT ? OFFSET ?",
-            crate::search::aliased_track_columns("t"),
-            crate::repos::track_columns(),
-        );
+        (
+            format!("{cte} SELECT COUNT(DISTINCT {TRACK_DEDUP_KEY}) {base}"),
+            format!(
+                "{cte}, ranked AS ( \
+                   SELECT {}, s.pr, {TRACK_DEDUP_KEY} AS track_dedup, \
+                          ROW_NUMBER() OVER (PARTITION BY {TRACK_DEDUP_KEY} \
+                          ORDER BY s.pr ASC, t.id ASC) AS rn \
+                   {base} \
+                 ) SELECT {} FROM ranked WHERE rn = 1 \
+                 ORDER BY title COLLATE NOCASE ASC, artist COLLATE NOCASE ASC, \
+                          album COLLATE NOCASE ASC, id ASC LIMIT ? OFFSET ?",
+                crate::search::aliased_track_columns("t"),
+                crate::repos::track_columns(),
+            ),
+        )
     } else {
-        count_sql = format!("{cte} SELECT COUNT(DISTINCT {ALBUM_DEDUP_KEY}) {base}");
-        page_sql = format!(
-            "{cte}, base AS ( \
-               SELECT t.server_id, t.album_id, t.album, t.artist, t.artist_id, \
-                      t.album_artist, t.year, t.genre, t.cover_art_id, \
-                      t.starred_at, t.synced_at, t.duration_sec, t.id, s.pr, \
-                      {ALBUM_DEDUP_KEY} AS album_dedup, \
-                      {TRACK_DEDUP_KEY} AS track_dedup {base} \
-             ) \
-             SELECT server_id, album_id, album, artist, artist_id, album_artist, \
-                    song_count, duration_total, year, genre, cover_art_id, starred_at, synced_at \
-             FROM ( \
-               SELECT server_id, album_id, album, artist, artist_id, album_artist, \
-                      year, genre, cover_art_id, starred_at, synced_at, \
-                      COUNT(DISTINCT track_dedup) AS song_count, \
-                      SUM(duration_sec) AS duration_total, \
-                      MIN({ALBUM_PICK_KEY}) AS _pick \
-               FROM base GROUP BY album_dedup \
-             ) \
-             ORDER BY album COLLATE NOCASE ASC, artist COLLATE NOCASE ASC, \
-                      album_id ASC LIMIT ? OFFSET ?"
-        );
-    }
+        (
+            format!("{cte} SELECT COUNT(DISTINCT {ALBUM_DEDUP_KEY}) {base}"),
+            format!(
+                "{cte}, base AS ( \
+                   SELECT t.server_id, t.album_id, t.album, t.artist, t.artist_id, \
+                          t.album_artist, t.year, t.genre, t.cover_art_id, \
+                          t.starred_at, t.synced_at, t.duration_sec, t.id, s.pr, \
+                          {ALBUM_DEDUP_KEY} AS album_dedup, \
+                          {TRACK_DEDUP_KEY} AS track_dedup {base} \
+                 ) \
+                 SELECT server_id, album_id, album, artist, artist_id, album_artist, \
+                        song_count, duration_total, year, genre, cover_art_id, starred_at, synced_at \
+                 FROM ( \
+                   SELECT server_id, album_id, album, artist, artist_id, album_artist, \
+                          year, genre, cover_art_id, starred_at, synced_at, \
+                          COUNT(DISTINCT track_dedup) AS song_count, \
+                          SUM(duration_sec) AS duration_total, \
+                          MIN({ALBUM_PICK_KEY}) AS _pick \
+                   FROM base GROUP BY album_dedup \
+                 ) \
+                 ORDER BY album COLLATE NOCASE ASC, artist COLLATE NOCASE ASC, \
+                          album_id ASC LIMIT ? OFFSET ?"
+            ),
+        )
+    };
     let mut binds = scope_params;
     binds.extend(tag_params);
     Query {
@@ -511,40 +520,52 @@ fn run_one(
         let (public_ids, public_total) = match view {
             View::Albums => {
                 let page = list_albums(
-                store,
-                &LibraryTagExplorerAlbumsRequest {
-                    server_id: scopes[0].server_id.clone(),
-                    library_scope: None,
-                    library_scopes: Some(scopes.to_vec()),
-                    tags: tags.to_vec(),
-                    mode,
-                    limit: 50,
-                    offset,
-                    include_total: offset == 0,
-                    count_only: false,
-                },
-            )
-            .expect("albums API");
-                (page.albums.into_iter().map(|a| (a.server_id, a.id)).collect::<Vec<_>>(), page.total)
-            },
+                    store,
+                    &LibraryTagExplorerAlbumsRequest {
+                        server_id: scopes[0].server_id.clone(),
+                        library_scope: None,
+                        library_scopes: Some(scopes.to_vec()),
+                        tags: tags.to_vec(),
+                        mode,
+                        limit: 50,
+                        offset,
+                        include_total: offset == 0,
+                        count_only: false,
+                    },
+                )
+                .expect("albums API");
+                (
+                    page.albums
+                        .into_iter()
+                        .map(|a| (a.server_id, a.id))
+                        .collect::<Vec<_>>(),
+                    page.total,
+                )
+            }
             View::Tracks => {
                 let page = list_tracks(
-                store,
-                &LibraryTagExplorerTracksRequest {
-                    server_id: scopes[0].server_id.clone(),
-                    library_scope: None,
-                    library_scopes: Some(scopes.to_vec()),
-                    tags: tags.to_vec(),
-                    mode,
-                    limit: 100,
-                    offset,
-                    include_total: offset == 0,
-                    count_only: false,
-                },
-            )
-            .expect("tracks API");
-                (page.tracks.into_iter().map(|t| (t.server_id, t.id)).collect::<Vec<_>>(), page.total)
-            },
+                    store,
+                    &LibraryTagExplorerTracksRequest {
+                        server_id: scopes[0].server_id.clone(),
+                        library_scope: None,
+                        library_scopes: Some(scopes.to_vec()),
+                        tags: tags.to_vec(),
+                        mode,
+                        limit: 100,
+                        offset,
+                        include_total: offset == 0,
+                        count_only: false,
+                    },
+                )
+                .expect("tracks API");
+                (
+                    page.tracks
+                        .into_iter()
+                        .map(|t| (t.server_id, t.id))
+                        .collect::<Vec<_>>(),
+                    page.total,
+                )
+            }
         };
         api_ms.push(started.elapsed().as_millis() as u64);
         // The SQL mirror requests limit+1; compare the exact public page prefix.
@@ -555,7 +576,11 @@ fn run_one(
         );
         assert!(mirror_rows.len() == public_ids.len() || mirror_rows.len() == public_ids.len() + 1);
         if offset == 0 {
-            assert_eq!(public_total, Some(result_count.max(0) as u32), "SQL/API count mismatch");
+            assert_eq!(
+                public_total,
+                Some(result_count.max(0) as u32),
+                "SQL/API count mismatch"
+            );
         } else {
             assert!(public_total.is_none());
         }
@@ -608,7 +633,11 @@ fn run_one(
                 next_offset += n as u32;
             }
             let unique: std::collections::HashSet<_> = collected.iter().collect();
-            assert_eq!(unique.len(), collected.len(), "duplicate playlist reference");
+            assert_eq!(
+                unique.len(),
+                collected.len(),
+                "duplicate playlist reference"
+            );
             refs_ms.push(started.elapsed().as_millis() as u64);
             refs_size = collected.len();
         }
@@ -741,5 +770,7 @@ fn explorer_backend_queries_against_disposable_copy() {
         source_before,
         "disposable source files changed during probe"
     );
-    eprintln!("complete_cases={executed}; source_copy_unchanged=verified; sandbox_writes_only=true");
+    eprintln!(
+        "complete_cases={executed}; source_copy_unchanged=verified; sandbox_writes_only=true"
+    );
 }
