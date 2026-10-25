@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Stimmungsergebnisse",
   tracksEmpty: "Keine Titel für diese Stimmung gefunden.",
   back: 'Zurück',
+  selectTags: 'Auswählen',
+  cancelSelection: 'Abbrechen',
+  clearSelection: 'Leeren',
+  selectedTagCount_one: '{{count}} Tag ausgewählt',
+  selectedTagCount_other: '{{count}} Tags ausgewählt',
+  selectionMinimum: 'Wähle mindestens zwei Tags aus, um kombinierte Ergebnisse anzuzeigen.',
+  viewResults: 'Ergebnisse anzeigen',
+  genreTagLabel: 'Genre',
+  moodTagLabel: 'Stimmung',
 };

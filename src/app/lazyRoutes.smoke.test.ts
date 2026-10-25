@@ -49,6 +49,7 @@ const ROUTE_LOADERS: Array<[string, () => Promise<{ default: unknown }>]> = [
   ['@/features/genre/pages/GenreDetail', () => import('@/features/genre/pages/GenreDetail')],
   ['@/features/mood/pages/Moods', () => import('@/features/mood/pages/Moods')],
   ['@/features/mood/pages/MoodDetail', () => import('@/features/mood/pages/MoodDetail')],
+  ['@/features/tagExplorer/pages/TagExplorerResultsPage', () => import('@/features/tagExplorer/pages/TagExplorerResultsPage')],
   ['@/features/share/pages/Shared', () => import('@/features/share/pages/Shared')],
   ['@/features/auth/pages/Login', () => import('@/features/auth/pages/Login')],
 ];
