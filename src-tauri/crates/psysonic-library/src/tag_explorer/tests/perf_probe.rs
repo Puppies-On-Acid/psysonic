@@ -4,7 +4,7 @@
 //! To run, stop Psysonic, make a consistent copy of the library DB *and* its
 //! library-cluster.db sidecar into a directory named psysonic-explorer-probe,
 //! and create PROBE-COPY-ONLY.txt containing the exact acknowledgement below.
-//! Then set PSYSONIC_PERF_DB to the copied library.sqlite.
+//! Then set PSYSONIC_EXPLORER_COPY_DB to the copied library.sqlite.
 //! The supplied copy is never opened by Psysonic: it is copied into a unique
 //! temporary sandbox first. Migrations and identity-key maintenance may write
 //! only to that sandbox, which is deleted when the probe completes.
@@ -18,7 +18,9 @@ use crate::dto::{LibraryAlbumDto, LibraryScopePair, LibraryTrackDto};
 use crate::repos::row_to_track_row;
 use crate::scope_merge::{scope_cte_sql, ALBUM_DEDUP_KEY, ALBUM_PICK_KEY, TRACK_DEDUP_KEY};
 use rusqlite::{params_from_iter, Connection, OptionalExtension};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use std::time::Instant;
 
 const RUNS: usize = 5;
@@ -98,8 +100,8 @@ struct Query {
 }
 
 fn checked_copy_path() -> Option<PathBuf> {
-    let Some(db) = std::env::var_os("PSYSONIC_PERF_DB") else {
-        eprintln!("SKIP: PSYSONIC_PERF_DB not set (copy-only probe)");
+    let Some(db) = std::env::var_os("PSYSONIC_EXPLORER_COPY_DB") else {
+        eprintln!("SKIP: PSYSONIC_EXPLORER_COPY_DB not set (copy-only probe)");
         return None;
     };
     let path = std::fs::canonicalize(db).expect("probe DB must exist");
@@ -132,6 +134,18 @@ fn checked_copy_path() -> Option<PathBuf> {
         "the copied library-cluster.db sidecar must be present"
     );
     Some(path)
+}
+
+fn copy_fingerprints(parent: &Path) -> Vec<(String, u64, u64)> {
+    ["library.sqlite", "library.sqlite-wal", "library-cluster.db", "library-cluster.db-wal"]
+        .iter()
+        .filter_map(|name| {
+            let data = std::fs::read(parent.join(name)).ok()?;
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            Some(((*name).to_string(), data.len() as u64, hasher.finish()))
+        })
+        .collect()
 }
 
 fn nondeleted_scopes(store: &LibraryStore) -> Vec<LibraryScopePair> {
@@ -390,11 +404,8 @@ fn report_plan(store: &LibraryStore, name: &str, sql: &str, binds: &[SqlValue]) 
         .expect("EXPLAIN QUERY PLAN");
     // Plans contain schema object names and operations, never bound tag values.
     eprintln!("  plan={name} steps={}", steps.len());
-    for detail in steps.iter().take(24) {
+    for detail in &steps {
         eprintln!("    {detail}");
-    }
-    if steps.len() > 24 {
-        eprintln!("    ... {} further steps", steps.len() - 24);
     }
 }
 
@@ -450,11 +461,10 @@ fn run_one(
         counts.push(timing.exec_ms);
         count_waits.push(timing.lock_wait_ms);
 
-        let ((n, map_us), timing) = store
+        let ((mirror_rows, map_us), timing) = store
             .with_read_conn_timed(|conn| {
                 let mut stmt = conn.prepare(&query.page_sql)?;
                 let mut converted_us = 0u128;
-                let mut count = 0usize;
                 let rows = stmt.query_map(params_from_iter(page_binds.iter()), |row| {
                     let started = Instant::now();
                     match view {
@@ -483,14 +493,13 @@ fn run_one(
                         }
                     }
                     converted_us += started.elapsed().as_micros();
-                    count += 1;
-                    Ok(())
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                 })?;
-                rows.collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok((count, converted_us))
+                let ids = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok((ids, converted_us))
             })
             .expect("page statement");
-        page_len = n;
+        page_len = mirror_rows.len();
         pages.push(timing.exec_ms);
         page_waits.push(timing.lock_wait_ms);
         mapping_us.push(map_us as u64);
@@ -499,8 +508,9 @@ fn run_one(
         // overlays, which the direct SQL above does not. Do not subtract it
         // from the SQL timings: the two reads are different transactions.
         let started = Instant::now();
-        let public_page_len = match view {
-            View::Albums => list_albums(
+        let (public_ids, public_total) = match view {
+            View::Albums => {
+                let page = list_albums(
                 store,
                 &LibraryTagExplorerAlbumsRequest {
                     server_id: scopes[0].server_id.clone(),
@@ -514,10 +524,11 @@ fn run_one(
                     count_only: false,
                 },
             )
-            .expect("albums API")
-            .albums
-            .len(),
-            View::Tracks => list_tracks(
+            .expect("albums API");
+                (page.albums.into_iter().map(|a| (a.server_id, a.id)).collect::<Vec<_>>(), page.total)
+            },
+            View::Tracks => {
+                let page = list_tracks(
                 store,
                 &LibraryTagExplorerTracksRequest {
                     server_id: scopes[0].server_id.clone(),
@@ -531,16 +542,23 @@ fn run_one(
                     count_only: false,
                 },
             )
-            .expect("tracks API")
-            .tracks
-            .len(),
+            .expect("tracks API");
+                (page.tracks.into_iter().map(|t| (t.server_id, t.id)).collect::<Vec<_>>(), page.total)
+            },
         };
         api_ms.push(started.elapsed().as_millis() as u64);
-        // The SQL mirror requests limit+1 for has_more; this is expected.
-        assert!(
-            page_len == public_page_len || page_len == public_page_len + 1,
-            "probe SQL mirror and public API disagree on page size"
+        // The SQL mirror requests limit+1; compare the exact public page prefix.
+        assert_eq!(
+            &mirror_rows[..mirror_rows.len().min(public_ids.len())],
+            public_ids.as_slice(),
+            "SQL mirror must preserve exact ordered identities"
         );
+        assert!(mirror_rows.len() == public_ids.len() || mirror_rows.len() == public_ids.len() + 1);
+        if offset == 0 {
+            assert_eq!(public_total, Some(result_count.max(0) as u32), "SQL/API count mismatch");
+        } else {
+            assert!(public_total.is_none());
+        }
     }
 
     eprintln!(
@@ -562,27 +580,40 @@ fn run_one(
 
     if matches!(view, View::Tracks) {
         let mut refs_ms = Vec::new();
-        let mut refs_size = 0;
+        let mut refs_size = 0usize;
         for _ in 0..RUNS {
             let started = Instant::now();
-            let page = list_track_refs(
-                store,
-                &LibraryTagExplorerTrackRefsRequest {
-                    server_id: scopes[0].server_id.clone(),
-                    library_scope: None,
-                    library_scopes: Some(scopes.to_vec()),
-                    tags: tags.to_vec(),
-                    mode,
-                    limit: 500,
-                    offset,
-                },
-            )
-            .expect("full-width reference query");
+            let mut next_offset = 0u32;
+            let mut collected = Vec::new();
+            loop {
+                let page = list_track_refs(
+                    store,
+                    &LibraryTagExplorerTrackRefsRequest {
+                        server_id: scopes[0].server_id.clone(),
+                        library_scope: None,
+                        library_scopes: Some(scopes.to_vec()),
+                        tags: tags.to_vec(),
+                        mode,
+                        limit: 500,
+                        offset: next_offset,
+                    },
+                )
+                .expect("full selection reference query");
+                let n = page.tracks.len();
+                collected.extend(page.tracks.into_iter().map(|r| (r.server_id, r.track_id)));
+                if !page.has_more {
+                    break;
+                }
+                assert!(n > 0, "reference pagination must progress");
+                next_offset += n as u32;
+            }
+            let unique: std::collections::HashSet<_> = collected.iter().collect();
+            assert_eq!(unique.len(), collected.len(), "duplicate playlist reference");
             refs_ms.push(started.elapsed().as_millis() as u64);
-            refs_size = page.tracks.len();
+            refs_size = collected.len();
         }
-        eprintln!("    reference_batch_rows={refs_size} reference_limit=500");
-        stats("reference_batch_total", "ms", &refs_ms);
+        eprintln!("    complete_reference_rows={refs_size} reference_page_limit=500");
+        stats("full_reference_resolution", "ms", &refs_ms);
     }
     report_plan(store, "raw_filter", &query.raw_filter_sql, &query.binds);
     report_plan(store, "count", &query.count_sql, &query.binds);
@@ -590,12 +621,14 @@ fn run_one(
 }
 
 #[test]
-#[ignore = "requires explicitly marked disposable PSYSONIC_PERF_DB copy"]
+#[ignore = "requires explicitly marked disposable PSYSONIC_EXPLORER_COPY_DB copy"]
 fn explorer_backend_queries_against_disposable_copy() {
     let Some(db) = checked_copy_path() else {
         return;
     };
     let staged_at = Instant::now();
+    let source_parent = db.parent().expect("source directory");
+    let source_before = copy_fingerprints(source_parent);
     let sandbox = stage_in_temporary_sandbox(&db);
     eprintln!("sandbox_stage_ms={}", staged_at.elapsed().as_millis());
     let opened = Instant::now();
@@ -703,5 +736,10 @@ fn explorer_backend_queries_against_disposable_copy() {
         }
     }
     assert!(executed > 0, "no probe cases were selected");
-    eprintln!("complete_cases={executed}; source copy unchanged; sandbox writes only");
+    assert_eq!(
+        copy_fingerprints(source_parent),
+        source_before,
+        "disposable source files changed during probe"
+    );
+    eprintln!("complete_cases={executed}; source_copy_unchanged=verified; sandbox_writes_only=true");
 }

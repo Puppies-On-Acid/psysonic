@@ -136,13 +136,38 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
             tracks_req.library_scopes = Some(scopes.clone());
             tracks_req.limit = 200;
             let full_tracks = list_tracks(&store, &tracks_req).unwrap();
-            let expected_tracks = full_tracks
+            // Independent golden oracle: 0..8 have every tag, 8..17 have
+            // Rock/Dreamy/Electronic, and 17..24 have only Rock.
+            let expected_indices: Vec<usize> = match (mode, tag_count) {
+                (LibraryTagMatchMode::Or, _) => (0..24).collect(),
+                (LibraryTagMatchMode::And, 2) => (0..17).collect(),
+                (LibraryTagMatchMode::And, 5 | 10) => (0..8).collect(),
+                _ => unreachable!("unexpected golden matrix case"),
+            };
+            let expected_tracks = expected_indices
+                .iter()
+                .map(|&i| {
+                    (
+                        (if i < 12 { "s1" } else { "s2" }).to_string(),
+                        format!("matrix-{i:03}"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let actual_tracks = full_tracks
                 .tracks
                 .iter()
                 .map(|r| (r.server_id.clone(), r.id.clone()))
                 .collect::<Vec<_>>();
+            assert_eq!(actual_tracks, expected_tracks, "{mode:?} {tag_count} golden tracks");
             assert_eq!(full_tracks.total, Some(expected_tracks.len() as u32));
-            assert!(expected_tracks.len() >= 8, "{mode:?} {tag_count} tags");
+            for (&i, row) in expected_indices.iter().zip(&full_tracks.tracks) {
+                assert_eq!(row.title, format!("Track {i:03}"));
+                assert_eq!(row.album_id.as_deref(), Some(format!("matrix-album-{i:03}").as_str()));
+                assert_eq!(row.library_id.as_deref(), Some(if i % 2 == 0 { "lib-a" } else { "lib-b" }));
+                assert_eq!(row.artist.as_deref(), Some("Artist"));
+                assert_eq!(row.duration_sec, 200);
+                assert_eq!(row.year, Some(2000));
+            }
 
             let mut count_req = tracks_req.clone();
             count_req.count_only = true;
@@ -173,6 +198,14 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 offset += batch as u32;
             }
             assert_eq!(observed, expected_tracks, "{mode:?} {tag_count} tracks");
+            let mut empty_req = tracks_req.clone();
+            empty_req.offset = 50;
+            empty_req.limit = 3;
+            empty_req.include_total = false;
+            let empty_page = list_tracks(&store, &empty_req).unwrap();
+            assert!(empty_page.tracks.is_empty());
+            assert!(!empty_page.has_more);
+            assert_eq!(empty_page.total, None);
             assert_eq!(
                 track_refs(&store, &tracks_req),
                 expected_tracks,
@@ -184,20 +217,28 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
             albums_req.library_scopes = Some(scopes.clone());
             albums_req.limit = 100;
             let full_albums = list_albums(&store, &albums_req).unwrap();
-            let expected_albums = full_albums
-                .albums
+            let expected_albums = expected_indices
                 .iter()
-                .map(|r| {
+                .map(|&i| {
                     (
-                        r.server_id.clone(),
-                        r.id.clone(),
-                        r.song_count,
-                        r.duration_sec,
+                        (if i < 12 { "s1" } else { "s2" }).to_string(),
+                        format!("matrix-album-{i:03}"),
+                        Some(1),
+                        Some(200),
                     )
                 })
                 .collect::<Vec<_>>();
+            let actual_albums = full_albums
+                .albums
+                .iter()
+                .map(|r| (r.server_id.clone(), r.id.clone(), r.song_count, r.duration_sec))
+                .collect::<Vec<_>>();
+            assert_eq!(actual_albums, expected_albums, "{mode:?} {tag_count} golden albums");
             assert_eq!(full_albums.total, Some(expected_albums.len() as u32));
-            assert!(expected_albums.len() >= 8, "{mode:?} {tag_count} albums");
+            for (&i, row) in expected_indices.iter().zip(&full_albums.albums) {
+                assert_eq!(row.name, format!("Album matrix-album-{i:03}"));
+                assert_eq!(row.year, Some(2000));
+            }
 
             let mut count_req = albums_req.clone();
             count_req.count_only = true;
@@ -232,6 +273,14 @@ fn baseline_matrix_preserves_exact_counts_order_and_paginated_refs() {
                 offset += batch as u32;
             }
             assert_eq!(observed, expected_albums, "{mode:?} {tag_count} albums");
+            let mut empty_req = albums_req.clone();
+            empty_req.offset = 50;
+            empty_req.limit = 3;
+            empty_req.include_total = false;
+            let empty_page = list_albums(&store, &empty_req).unwrap();
+            assert!(empty_page.albums.is_empty());
+            assert!(!empty_page.has_more);
+            assert_eq!(empty_page.total, None);
         }
     }
 }
@@ -316,6 +365,89 @@ fn baseline_same_tagged_copies_dedup_with_priority() {
     let albums = list_albums(&store, &req).unwrap();
     assert_eq!(albums.total, Some(1));
     assert_eq!(albums.albums[0].server_id, "s1");
+}
+
+
+#[test]
+fn baseline_reversing_scope_priority_changes_duplicate_owner_not_result_order() {
+    let store = seed(&[
+        sample("s1", Some("lib-a"), "a-copy", "Alpha", "dup", &["Rock"], &["Dreamy"]),
+        sample("s2", Some("lib-b"), "b-copy", "Alpha", "dup", &["Rock"], &["Dreamy"]),
+        sample("s3", Some("lib-c"), "other", "Zulu", "other", &["Rock"], &["Dreamy"]),
+    ]);
+    for (scopes, expected_owner, expected_id) in [
+        (
+            vec![scoped("s1", "lib-a"), scoped("s2", "lib-b"), scoped("s3", "lib-c")],
+            "s1",
+            "a-copy",
+        ),
+        (
+            vec![scoped("s2", "lib-b"), scoped("s1", "lib-a"), scoped("s3", "lib-c")],
+            "s2",
+            "b-copy",
+        ),
+    ] {
+        let mut track_req = track_request(LibraryTagMatchMode::And);
+        track_req.library_scopes = Some(scopes.clone());
+        let tracks = list_tracks(&store, &track_req).unwrap();
+        assert_eq!(tracks.total, Some(2));
+        assert_eq!(
+            tracks.tracks.iter().map(|t| (t.server_id.as_str(), t.id.as_str())).collect::<Vec<_>>(),
+            vec![(expected_owner, expected_id), ("s3", "other")]
+        );
+        assert_eq!(
+            track_refs(&store, &track_req),
+            vec![
+                (expected_owner.to_string(), expected_id.to_string()),
+                ("s3".into(), "other".into()),
+            ]
+        );
+
+        let mut album_req = album_request(LibraryTagMatchMode::And);
+        album_req.library_scopes = Some(scopes);
+        let albums = list_albums(&store, &album_req).unwrap();
+        assert_eq!(albums.total, Some(2));
+        assert_eq!(
+            albums.albums.iter().map(|a| (a.server_id.as_str(), a.id.as_str(), a.song_count)).collect::<Vec<_>>(),
+            vec![(expected_owner, "dup", Some(1)), ("s3", "other", Some(1))]
+        );
+    }
+}
+
+#[test]
+fn baseline_collective_album_and_across_libraries_and_servers_has_golden_metadata() {
+    let store = seed(&[
+        sample("s1", Some("lib-a"), "a", "Alpha", "album-a", &["Rock"], &[]),
+        sample("s1", Some("lib-a"), "b", "Bravo", "album-a", &[], &["Dreamy"]),
+        sample("s1", Some("lib-b"), "c", "Charlie", "album-b", &["Rock"], &["Dreamy"]),
+        sample("s2", Some("lib-c"), "d", "Delta", "album-c", &["Rock"], &["Dreamy"]),
+    ]);
+    let scopes = vec![scoped("s1", "lib-a"), scoped("s1", "lib-b"), scoped("s2", "lib-c")];
+    let mut album_req = album_request(LibraryTagMatchMode::And);
+    album_req.library_scopes = Some(scopes.clone());
+    let albums = list_albums(&store, &album_req).unwrap();
+    assert_eq!(albums.total, Some(3));
+    assert_eq!(
+        albums.albums.iter().map(|a| (a.server_id.as_str(), a.id.as_str(), a.song_count, a.duration_sec)).collect::<Vec<_>>(),
+        vec![
+            ("s1", "album-a", Some(2), Some(400)),
+            ("s1", "album-b", Some(1), Some(200)),
+            ("s2", "album-c", Some(1), Some(200)),
+        ]
+    );
+
+    let mut track_req = track_request(LibraryTagMatchMode::And);
+    track_req.library_scopes = Some(scopes);
+    let tracks = list_tracks(&store, &track_req).unwrap();
+    assert_eq!(tracks.total, Some(2));
+    assert_eq!(
+        tracks.tracks.iter().map(|t| (t.server_id.as_str(), t.id.as_str())).collect::<Vec<_>>(),
+        vec![("s1", "c"), ("s2", "d")]
+    );
+    assert_eq!(
+        track_refs(&store, &track_req),
+        vec![("s1".into(), "c".into()), ("s2".into(), "d".into())]
+    );
 }
 
 #[test]
