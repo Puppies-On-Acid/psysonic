@@ -33,6 +33,7 @@ pub mod filter;
 pub mod genre_album_browse;
 pub mod genre_tags;
 pub mod genre_tags_backfill;
+pub mod genre_track_browse;
 pub mod identity;
 pub mod label_album_browse;
 pub mod label_tags;

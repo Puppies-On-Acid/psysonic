@@ -523,6 +523,40 @@ pub struct LibraryGenreAlbumsResponse {
     pub source: String,
 }
 
+/// `library_list_tracks_by_genre` request — paginated genre track browse.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryGenreTracksRequest {
+    pub server_id: String,
+    pub genre: String,
+    #[serde(default)]
+    pub library_scope: Option<String>,
+    #[serde(default)]
+    pub library_scopes: Option<Vec<LibraryScopePair>>,
+    #[serde(default = "default_genre_track_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+    #[serde(default)]
+    pub include_total: bool,
+    #[serde(default)]
+    pub count_only: bool,
+}
+
+fn default_genre_track_limit() -> u32 {
+    100
+}
+
+/// `library_list_tracks_by_genre` response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryGenreTracksResponse {
+    pub tracks: Vec<LibraryTrackDto>,
+    pub has_more: bool,
+    pub total: Option<u32>,
+    pub source: String,
+}
+
 /// `library_list_albums_by_mood` request — paginated file-mood album browse.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
