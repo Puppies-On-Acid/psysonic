@@ -19,6 +19,8 @@ Record the decision, what it authorizes, what it **does not** authorize, date, a
 
 | D-013 | 2026-10-24 | Keep `Puppies-On-Acid/psysonic` **public**, enable GitHub Issues, create one **living handoff issue #1** and focused public issues for existing work, link them from the docs-only Project Hub, and archive the former STATUS.md snapshot instead of maintaining two authoritative handoffs. | **Explicit owner authorization**: “keep it all public ... enabled issues ... make whatever changes are necessary.” Allows issue-tracking/documentation migration and factual housekeeping, **not** implementation, new feature scope, PR creation/merge, branch rewrite/deletion, or future repository-settings changes. GitHub Issues are public; sanitize all data. |
 
+| D-014 | 2026-10-24 | Create a **separate upstream-aligned Explorer contribution branch** `feat/genre-mood-explorer-upstream-aligned` from the live upstream main commit [`afa216c3`](https://github.com/Psysonic/psysonic/commit/afa216c3aa352d1a63a33a29135e0d80cff19c1b), while preserving the original Explorer diagnostics and protected `personal/integration` branches. | **Owner explicitly approved** in this project chat (“That is approved”), responding to the separate-branch proposal. **Executed**: branch created at exact upstream SHA with zero changes relative to upstream; this is an upstream-aligned *starting point*, not a completed Explorer feature port. No standing permission for unrelated feature transfer, production performance optimization, live database operations, PR, merge, or rewriting/deleting existing branches. |
+
 ## Initial hub v0.1 ratified — 2026-10-24 (D-012)
 
 - [x] Owner approves branch name **meta/project-hub** and docs-only lifecycle.
