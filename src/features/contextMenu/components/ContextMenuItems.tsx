@@ -7,6 +7,7 @@ import AlbumContextItems from '@/features/contextMenu/components/AlbumContextIte
 import ArtistContextItems from '@/features/contextMenu/components/ArtistContextItems';
 import PlaylistContextItems from '@/features/contextMenu/components/PlaylistContextItems';
 import PlaylistTagContextItems from '@/features/contextMenu/components/PlaylistTagContextItems';
+import PlaylistMembershipContextItems from '@/features/contextMenu/components/PlaylistMembershipContextItems';
 
 export default function ContextMenuItems(props: ContextMenuItemsProps) {
   const { type } = props;
@@ -30,6 +31,8 @@ export default function ContextMenuItems(props: ContextMenuItemsProps) {
       return <PlaylistContextItems {...props} />;
     case 'playlist-tag':
       return <PlaylistTagContextItems {...props} />;
+    case 'playlist-membership':
+      return <PlaylistMembershipContextItems {...props} />;
     default:
       return null;
   }

@@ -84,3 +84,21 @@
   word-break: break-all;
 }
 
+
+.song-info-playlists {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.song-info-playlist-link {
+  display: inline;
+  max-width: min(280px, 100%);
+  font-size: inherit;
+}
+
+.song-info-playlist-sep {
+  color: var(--text-muted);
+}

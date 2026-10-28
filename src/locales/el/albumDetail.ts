@@ -38,6 +38,7 @@ export const albumDetail = {
   trackGenre: 'Είδος',
   trackGenres: 'Είδη',
   trackMood: 'Διάθεση',
+  trackPlaylists: 'Λίστες αναπαραγωγής',
   trackPlayCount: 'Αναπαραγωγές',
   trackLastPlayed: 'Τελευταία αναπαραγωγή',
   trackBpm: 'BPM',

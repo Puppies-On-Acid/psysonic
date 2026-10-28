@@ -5,6 +5,7 @@ import { ndLogin } from '@/lib/api/navidromeAdmin';
 import { getCachedConnectBaseUrl } from '@/lib/server/serverEndpoint';
 import { serverProfileBaseUrl } from '@/lib/server/serverBaseUrl';
 import { hasNavidromeSmartRules } from '@/lib/format/playlistClassification';
+import { canonicalNavidromeId } from '@/lib/server/navidromeCanonicalId';
 
 export type SmartRuleOperator =
   | 'is'
@@ -230,11 +231,71 @@ function asItemList(raw: unknown): unknown[] {
   return [];
 }
 
+export interface NdSongPlaylistRef {
+  id: string;
+  name: string;
+}
+
+/** GET `/api/song/{id}/playlists` — one-track reverse membership lookup. */
+export async function ndGetSongPlaylists(
+  id: string,
+  serverId?: string,
+): Promise<NdSongPlaylistRef[]> {
+  const { serverUrl, token } = await getNavidromeAuth(serverId);
+  const raw = await invoke<unknown>('nd_get_song_playlists', {
+    serverUrl,
+    token,
+    id,
+  });
+  return asItemList(raw)
+    .map(value => parseNdSmartPlaylist(value))
+    .filter(playlist => Boolean(playlist.id && playlist.name))
+    .map(playlist => ({
+      id: canonicalNavidromeId(playlist.id),
+      name: playlist.name,
+    }));
+}
+
+/**
+ * Check one song against Navidrome smart playlists without downloading their
+ * full membership. A filtered first-page request both refreshes the smart
+ * playlist (_start=0) and returns at most the matching song.
+ *
+ * Keep these probes serial: Navidrome 0.64 rebuilds smart playlist_tracks with
+ * SQLite writes, and concurrent refreshes can contend with each other.
+ */
+export async function ndGetSongSmartPlaylists(
+  id: string,
+  serverId?: string,
+): Promise<NdSongPlaylistRef[]> {
+  const smartPlaylists = (await ndListPlaylists(serverId))
+    .filter(playlist => hasNavidromeSmartRules(playlist.rules));
+
+  const matches: NdSongPlaylistRef[] = [];
+  for (const playlist of smartPlaylists) {
+    try {
+      const rows = await ndGetPlaylistTracks(playlist.id, serverId, {
+        start: 0,
+        end: 1,
+        mediaFileId: id,
+      });
+      if (rows.length === 0) continue;
+      matches.push({
+        id: canonicalNavidromeId(playlist.id),
+        name: playlist.name,
+      });
+    } catch {
+      // One smart playlist failure must not suppress the other memberships.
+    }
+  }
+  return matches;
+}
+
 /** GET `/api/playlist/{id}/tracks` — first-page or ranged native track read. */
 export async function ndGetPlaylistTracks(
   id: string,
   serverId?: string,
-  range?: { start?: number; end?: number },
+  range?: { start?: number; end?: number; mediaFileId?: string },
 ): Promise<unknown[]> {
   const { serverUrl, token } = await getNavidromeAuth(serverId);
   const raw = await invoke<unknown>('nd_get_playlist_tracks', {
@@ -243,8 +304,47 @@ export async function ndGetPlaylistTracks(
     id,
     start: range?.start ?? 0,
     end: range?.end ?? 50,
+    mediaFileId: range?.mediaFileId,
   });
   return asItemList(raw);
+}
+
+const SMART_TRACK_PAGE_SIZE = 500;
+
+function nativePlaylistTrackMediaFileId(value: unknown): string {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Navidrome playlist track is missing a mediaFileId');
+  }
+  const mediaFileId = (value as { mediaFileId?: unknown }).mediaFileId;
+  if (typeof mediaFileId === 'string' && mediaFileId) return mediaFileId;
+  if (typeof mediaFileId === 'number' && Number.isFinite(mediaFileId)) {
+    return String(mediaFileId);
+  }
+  throw new Error('Navidrome playlist track is missing a mediaFileId');
+}
+
+/**
+ * Read the complete native playlist membership. Starting at zero is significant:
+ * Navidrome evaluates/refreshes smart playlists when this tracks endpoint begins
+ * at _start=0, so the returned ids are the membership from that evaluation
+ * rather than the potentially lagging Subsonic projection.
+ */
+export async function ndGetPlaylistTrackIds(
+  id: string,
+  serverId?: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let start = 0; ; start += SMART_TRACK_PAGE_SIZE) {
+    const rows = await ndGetPlaylistTracks(id, serverId, {
+      start,
+      end: start + SMART_TRACK_PAGE_SIZE,
+    });
+    ids.push(...rows.map(value =>
+      canonicalNavidromeId(nativePlaylistTrackMediaFileId(value))
+    ));
+    if (rows.length < SMART_TRACK_PAGE_SIZE) break;
+  }
+  return ids;
 }
 
 /**

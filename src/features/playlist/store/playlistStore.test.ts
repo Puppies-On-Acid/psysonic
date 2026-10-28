@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { resetAuthStore } from '@/test/helpers/storeReset';
 import { migratePlaylistPersistedState, usePlaylistStore } from './playlistStore';
 import { setServerReachability } from '@/lib/network/serverReachability';
+import { usePlaylistMembershipStore } from '@/store/playlistMembershipStore';
 
 const getPlaylistsForServersSettledMock = vi.hoisted(() => vi.fn());
 const getPlaylistsForServerMock = vi.hoisted(() => vi.fn());
@@ -28,6 +29,10 @@ describe('playlistStore scoped fetch', () => {
       playlistsLoading: false,
       recentIds: [],
       lastModified: {},
+    });
+    usePlaylistMembershipStore.setState({
+      songIdsByCacheKey: {},
+      revision: 0,
     });
     useAuthStore.setState({
       servers: [
@@ -111,12 +116,98 @@ describe('playlistStore scoped fetch', () => {
       { id: 'new-a', serverId: 'a', name: 'New A' },
     ]);
 
-    await usePlaylistStore.getState().fetchPlaylistsForServer('a');
+    const applied = await usePlaylistStore.getState().fetchPlaylistsForServer('a');
 
+    expect(applied).toBe(true);
     expect(usePlaylistStore.getState().playlists).toEqual([
       expect.objectContaining({ id: 'keep-b', serverId: 'b' }),
       expect.objectContaining({ id: 'new-a', serverId: 'a' }),
     ]);
+  });
+
+  it('invalidates cached membership when owner metadata proves a playlist changed', async () => {
+    usePlaylistStore.setState({
+      playlists: [
+        {
+          id: 'same',
+          serverId: 'a',
+          name: 'Mix',
+          songCount: 1,
+          duration: 60,
+          created: '',
+          changed: 'old',
+        },
+      ],
+    });
+    usePlaylistMembershipStore
+      .getState()
+      .setPlaylistSongIds('same', ['old-song'], 'a');
+    getPlaylistsForServerMock.mockResolvedValue([
+      {
+        id: 'same',
+        serverId: 'a',
+        name: 'Mix',
+        songCount: 2,
+        duration: 120,
+        created: '',
+        changed: 'new',
+      },
+    ]);
+
+    await usePlaylistStore.getState().fetchPlaylistsForServer('a');
+
+    expect(
+      usePlaylistMembershipStore.getState().getPlaylistSongIds('same', 'a'),
+    ).toBeUndefined();
+  });
+
+  it('keeps cached membership when owner metadata is unchanged', async () => {
+    const playlist = {
+      id: 'same',
+      serverId: 'a',
+      name: 'Mix',
+      songCount: 1,
+      duration: 60,
+      created: '',
+      changed: 'same-stamp',
+    };
+    usePlaylistStore.setState({ playlists: [playlist] });
+    usePlaylistMembershipStore
+      .getState()
+      .setPlaylistSongIds('same', ['song-1'], 'a');
+    getPlaylistsForServerMock.mockResolvedValue([playlist]);
+
+    await usePlaylistStore.getState().fetchPlaylistsForServer('a');
+
+    expect(
+      usePlaylistMembershipStore.getState().getPlaylistSongIds('same', 'a'),
+    ).toEqual(['song-1']);
+  });
+
+  it('invalidates cached membership when a playlist disappears from its owner', async () => {
+    usePlaylistStore.setState({
+      playlists: [
+        {
+          id: 'gone',
+          serverId: 'a',
+          name: 'Gone',
+          songCount: 1,
+          duration: 60,
+          created: '',
+          changed: 'old',
+        },
+      ],
+    });
+    usePlaylistMembershipStore
+      .getState()
+      .setPlaylistSongIds('gone', ['song-1'], 'a');
+    getPlaylistsForServerMock.mockResolvedValue([]);
+
+    await usePlaylistStore.getState().fetchPlaylistsForServer('a');
+
+    expect(
+      usePlaylistMembershipStore.getState().getPlaylistSongIds('gone', 'a'),
+    ).toBeUndefined();
   });
 
   it('retains the last-known playlists for an owner whose refresh failed', async () => {
@@ -139,6 +230,49 @@ describe('playlistStore scoped fetch', () => {
     ]);
   });
 
+  it('patches playlist metadata only for the matching owner', () => {
+    usePlaylistStore.setState({
+      playlists: [
+        { id: 'same', serverId: 'a', name: 'Old A', songCount: 0, duration: 0, created: '', changed: '' },
+        { id: 'same', serverId: 'b', name: 'Old B', songCount: 0, duration: 0, created: '', changed: '' },
+      ],
+    });
+
+    usePlaylistStore.getState().patchPlaylistMetadata('same', 'a', {
+      name: 'Renamed A',
+      comment: 'Updated',
+    });
+
+    expect(usePlaylistStore.getState().playlists).toEqual([
+      expect.objectContaining({ id: 'same', serverId: 'a', name: 'Renamed A', comment: 'Updated' }),
+      expect.objectContaining({ id: 'same', serverId: 'b', name: 'Old B' }),
+    ]);
+  });
+
+  it('does not let an in-flight owner refresh restore metadata from before a local patch', async () => {
+    usePlaylistStore.setState({
+      playlists: [
+        { id: 'same', serverId: 'a', name: 'Old A', songCount: 0, duration: 0, created: '', changed: '' },
+      ],
+    });
+    let resolveRefresh!: (value: Array<{
+      id: string; serverId: string; name: string; songCount: number; duration: number; created: string; changed: string;
+    }>) => void;
+    getPlaylistsForServerMock.mockReturnValue(new Promise(resolve => { resolveRefresh = resolve; }));
+
+    const refresh = usePlaylistStore.getState().fetchPlaylistsForServer('a');
+    usePlaylistStore.getState().patchPlaylistMetadata('same', 'a', { name: 'Renamed A' });
+    resolveRefresh([
+      { id: 'same', serverId: 'a', name: 'Old A', songCount: 0, duration: 0, created: '', changed: '' },
+    ]);
+    const applied = await refresh;
+
+    expect(applied).toBe(false);
+    expect(usePlaylistStore.getState().playlists).toEqual([
+      expect.objectContaining({ id: 'same', serverId: 'a', name: 'Renamed A' }),
+    ]);
+  });
+
   it('does not let an owner refresh overwrite a playlist added while it was in flight', async () => {
     let resolveRefresh!: (value: Array<{
       id: string; serverId: string; name: string; songCount: number; duration: number; created: string; changed: string;
@@ -150,10 +284,29 @@ describe('playlistStore scoped fetch', () => {
       id: 'new-a', serverId: 'a', name: 'New A', songCount: 0, duration: 0, created: '', changed: '',
     });
     resolveRefresh([]);
-    await refresh;
+    const applied = await refresh;
 
+    expect(applied).toBe(false);
     expect(usePlaylistStore.getState().playlists).toEqual([
       expect.objectContaining({ id: 'new-a', serverId: 'a' }),
+    ]);
+  });
+
+  it('reports a failed owner refresh without replacing last-known metadata', async () => {
+    usePlaylistStore.setState({
+      playlists: [
+        {
+          id: 'old-a', serverId: 'a', name: 'Old A', songCount: 0, duration: 0, created: '', changed: '',
+        },
+      ],
+    });
+    getPlaylistsForServerMock.mockRejectedValue(new Error('offline'));
+
+    const applied = await usePlaylistStore.getState().fetchPlaylistsForServer('a');
+
+    expect(applied).toBe(false);
+    expect(usePlaylistStore.getState().playlists).toEqual([
+      expect.objectContaining({ id: 'old-a', serverId: 'a' }),
     ]);
   });
 
