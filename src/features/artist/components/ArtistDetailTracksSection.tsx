@@ -26,6 +26,8 @@ interface Props {
   serverId: string;
   artistId: string;
   onPlayAllTracks: (songs: SubsonicSong[], index: number) => void;
+  /** Avoid server requests while browsing locally cached artist tracks. */
+  playlistMembershipHydrationEnabled: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ interface Props {
 export default function ArtistDetailTracksSection({
   topSongs, topSongsLoading, albums, marginTop, playTopSongWithContinuation,
   losslessOnly = false, scopes, serverId, artistId, onPlayAllTracks,
+  playlistMembershipHydrationEnabled,
 }: Props) {
   const { t } = useTranslation();
   // Starts on the ranking for every artist: the caller keys this component by
@@ -155,6 +158,7 @@ export default function ArtistDetailTracksSection({
             onPlay={onPlayAllTracks}
             columns={columns}
             playlistMembershipFallbackServerId={serverId}
+            playlistMembershipHydrationEnabled={playlistMembershipHydrationEnabled}
           />
         )}
       </div>

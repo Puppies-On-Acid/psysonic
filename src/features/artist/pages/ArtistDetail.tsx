@@ -378,6 +378,7 @@ export default function ArtistDetail() {
               marginTop={sectionMt('topTracks')}
               playTopSongWithContinuation={playTopSongWithContinuation}
               losslessOnly={losslessOnly}
+              playlistMembershipHydrationEnabled={!offlineCtx.active}
               scopes={entitySourceScopes}
               // Same anchor pair the page loader uses: the route's server plus the
               // route's artist id. `artist.serverId` is the scope-priority winner

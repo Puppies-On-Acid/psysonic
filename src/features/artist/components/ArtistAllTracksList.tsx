@@ -57,6 +57,8 @@ interface Props {
   columns: ReturnType<typeof useTracklistColumns>;
   /** Owner to use only for legacy rows that are not explicitly server-stamped. */
   playlistMembershipFallbackServerId: string;
+  /** False during offline browsing, even if the Playlists column is visible. */
+  playlistMembershipHydrationEnabled: boolean;
 }
 
 /**
@@ -73,6 +75,7 @@ export default function ArtistAllTracksList({
   onPlay,
   columns,
   playlistMembershipFallbackServerId,
+  playlistMembershipHydrationEnabled,
 }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -97,7 +100,7 @@ export default function ArtistAllTracksList({
     songs,
     colVisible.has('bpm') || sort.key === 'bpm',
   );
-  const playlistMembershipActive = colVisible.has('playlists');
+  const playlistMembershipActive = playlistMembershipHydrationEnabled && colVisible.has('playlists');
   const playlistMembershipServerIds = useMemo(() => {
     if (!playlistMembershipActive) return [];
     const owners = new Set<string>();
