@@ -296,6 +296,8 @@ pub(crate) async fn try_resume_after_device_change(
             generation: gen,
             sink,
             duration_secs: ps.built.duration_secs,
+            output_rate: ps.built.output_rate,
+            output_channels: ps.built.output_channels,
             volume: snap.base_volume,
             gain_linear: snap.gain_linear,
             fadeout_trigger: ps.built.fadeout_trigger,

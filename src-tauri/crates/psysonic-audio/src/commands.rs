@@ -686,6 +686,8 @@ pub async fn audio_play(
             generation: gen,
             sink: sink.clone(),
             duration_secs,
+            output_rate,
+            output_channels,
             volume,
             gain_linear,
             fadeout_trigger: built.fadeout_trigger,
@@ -701,8 +703,8 @@ pub async fn audio_play(
     );
     drop(stream_attach);
 
-    // Ownership, optional B-head seek offset, and the first play() call are
-    // committed together while `current` is locked, so pause cannot be lost.
+    // Sink ownership, optional B-head offset and initial play() are committed
+    // under `current`; a pause after the handoff cannot race a later start.
     drop(commit_guard);
 
     if defer_playback_start && !require_start_seek {

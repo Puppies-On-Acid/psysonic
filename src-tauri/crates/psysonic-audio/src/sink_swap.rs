@@ -90,6 +90,9 @@ pub(crate) struct SinkSwapInputs {
     pub(crate) generation: u64,
     pub(crate) sink: Arc<rodio::Player>,
     pub(crate) duration_secs: f64,
+    /// The incoming decoded source format; not the mutable engine-wide format.
+    pub(crate) output_rate: u32,
+    pub(crate) output_channels: u16,
     pub(crate) volume: f32,
     pub(crate) gain_linear: f32,
     pub(crate) fadeout_trigger: Arc<AtomicBool>,
@@ -144,20 +147,6 @@ fn handoff_old_sink_fade_out(
     });
 }
 
-/// Start the just-published source under `current` so a concurrent pause
-/// cannot interleave between sink publication and play().
-fn start_committed_player(current: &AudioCurrent, sink: &Arc<rodio::Player>, start_playback: bool) {
-    if start_playback
-        && current.paused_at.is_none()
-        && current
-            .sink
-            .as_ref()
-            .is_some_and(|active| Arc::ptr_eq(active, sink))
-    {
-        sink.play();
-    }
-}
-
 /// Atomically swap the new sink into `state.current`, then handle the old
 /// sink: trigger sample-level fade-out (crossfade enabled) or stop it
 /// immediately (hard cut). The fade-out is handed off to a small spawned
@@ -167,6 +156,8 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
         generation,
         sink,
         duration_secs,
+        output_rate,
+        output_channels,
         volume,
         gain_linear,
         fadeout_trigger: new_fadeout_trigger,
@@ -205,8 +196,8 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
             .map(|secs| {
                 raw_counter_samples_for_content_position(
                     secs,
-                    state.current_sample_rate.load(Ordering::Relaxed),
-                    state.current_channels.load(Ordering::Relaxed),
+                    output_rate,
+                    output_channels as u32,
                     &state.playback_rate,
                 )
             })
@@ -217,9 +208,11 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
             generation,
             initial_samples,
         );
-        // A simultaneous audio_pause waits for `current`, then pauses a
-        // running player; it can no longer miss the transition.
-        start_committed_player(&cur, &sink, start_playback);
+        // Keep the first play() under `current`: a pause issued after
+        // this handoff cannot be overtaken by a delayed initial start.
+        if start_playback {
+            sink.play();
+        }
         (old, old_fo_trigger, old_fo_samples)
     };
 
@@ -263,64 +256,6 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
 mod tests {
     use super::*;
     use std::num::{NonZeroU16, NonZeroU32};
-
-    fn test_current(sink: Arc<rodio::Player>) -> Mutex<AudioCurrent> {
-        Mutex::new(AudioCurrent {
-            sink: Some(sink),
-            duration_secs: 30.0,
-            seek_offset: 0.0,
-            play_started: None,
-            paused_at: None,
-            replay_gain_linear: 1.0,
-            base_volume: 0.8,
-            fadeout_trigger: None,
-            fadeout_samples: None,
-            streaming_seek: None,
-        })
-    }
-
-    #[test]
-    fn committed_sink_start_cannot_undo_user_pause() {
-        // Rodio's software mixer needs no output device for this transport test.
-        let (mixer, _output) = rodio::mixer::mixer(
-            NonZeroU16::new(2).unwrap(),
-            NonZeroU32::new(48_000).unwrap(),
-        );
-        let sink = Arc::new(rodio::Player::connect_new(&mixer));
-        sink.pause();
-        let current = test_current(sink.clone());
-
-        // The actual swap starts the source while holding this same mutex.
-        {
-            let cur = current.lock().unwrap();
-            start_committed_player(&cur, &sink, true);
-        }
-        assert!(!sink.is_paused());
-
-        // The pause command runs next; no delayed start can override it.
-        {
-            let mut cur = current.lock().unwrap();
-            sink.pause();
-            cur.play_started = None;
-            cur.paused_at = Some(0.0);
-            start_committed_player(&cur, &sink, true);
-        }
-        assert!(sink.is_paused());
-    }
-
-    #[test]
-    fn deferred_and_silent_commits_do_not_start_the_sink() {
-        let (mixer, _output) = rodio::mixer::mixer(
-            NonZeroU16::new(2).unwrap(),
-            NonZeroU32::new(48_000).unwrap(),
-        );
-        let sink = Arc::new(rodio::Player::connect_new(&mixer));
-        sink.pause();
-        let current = test_current(sink.clone());
-        let cur = current.lock().unwrap();
-        start_committed_player(&cur, &sink, false);
-        assert!(sink.is_paused());
-    }
 
     /// Infinite stereo PCM with a separate counter for *actual* samples mixed.
     /// It distinguishes the outgoing tail from the incoming track's samples.
@@ -384,6 +319,8 @@ mod tests {
             generation,
             sink,
             duration_secs: 30.0,
+            output_rate: 48_000,
+            output_channels: 2,
             volume: 1.0,
             gain_linear: 1.0,
             fadeout_trigger: Arc::new(AtomicBool::new(false)),
@@ -396,6 +333,51 @@ mod tests {
             start_position_secs,
             streaming_seek: None,
         }
+    }
+
+    #[tokio::test]
+    async fn deferred_and_start_paused_swaps_leave_real_sinks_paused() {
+        use tauri::Manager;
+
+        let app = tauri::test::mock_app();
+        app.manage(crate::stream_idle::tests::minimal_engine());
+        let state = app.state::<AudioEngine>();
+        let (mixer, _output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+
+        for (generation, start_paused) in [(1, false), (2, true)] {
+            let (sink, _) = observed_player(&mixer, &state, generation);
+            let mut inputs = swap_args(generation, sink.clone(), false, None);
+            inputs.start_playback = false;
+            inputs.start_paused = start_paused;
+            swap_in_new_sink(&state, inputs);
+            assert!(sink.is_paused());
+            assert_eq!(state.current_generation.load(Ordering::Acquire), generation);
+        }
+    }
+
+    #[tokio::test]
+    async fn start_offset_uses_immutable_source_format_not_engine_atomics() {
+        use tauri::Manager;
+
+        let app = tauri::test::mock_app();
+        app.manage(crate::stream_idle::tests::minimal_engine());
+        let state = app.state::<AudioEngine>();
+        // Simulate a late concurrent format update: it must not alter the
+        // offset seeded for the incoming 48 kHz stereo decoded source.
+        state.current_sample_rate.store(44_100, Ordering::Relaxed);
+        state.current_channels.store(1, Ordering::Relaxed);
+        let (mixer, _output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+        let (sink, _) = observed_player(&mixer, &state, 7);
+        swap_in_new_sink(&state, swap_args(7, sink, false, Some(2.0)));
+
+        assert_eq!(state.current_generation.load(Ordering::Acquire), 7);
+        assert_eq!(state.samples_played.load(Ordering::Relaxed), 2 * 48_000 * 2);
     }
 
     #[tokio::test]

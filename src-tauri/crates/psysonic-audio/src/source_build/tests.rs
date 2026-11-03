@@ -63,8 +63,8 @@ fn does_not_retry_unrelated_legacy_stream_failures() {
     ));
 }
 
-/// Exercises the real WAV decoder and shared source-construction path.
-/// Hi-Res outgoing rebuilds retain A's clock owner while B is being prepared.
+/// Decodes two WAV sources with distinct sample-counter owners and verifies
+/// that only the active owner counts samples across a clock handoff.
 #[tokio::test]
 async fn built_pcm_source_obeys_the_explicit_clock_generation() {
     use std::sync::atomic::{AtomicBool, Ordering};
