@@ -105,10 +105,27 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
     state: &State<'_, AudioEngine>,
     app: &AppHandle,
 ) -> Result<PlaybackSource, String> {
+    let clock_generation = args.clock_generation;
+    let mut playback_source =
+        build_playback_source_with_probe_fallback_inner(play_input, args, state, app).await?;
+    playback_source
+        .built
+        .source
+        .track_sample_counter_generation(state.current_generation.clone(), clock_generation);
+    Ok(playback_source)
+}
+
+/// Resolve the source and fallback paths before binding the active clock owner.
+async fn build_playback_source_with_probe_fallback_inner(
+    play_input: PlayInput,
+    args: BuildSourceArgs<'_>,
+    state: &State<'_, AudioEngine>,
+    app: &AppHandle,
+) -> Result<PlaybackSource, String> {
     let BuildSourceArgs {
         url,
         gen,
-        clock_generation,
+        clock_generation: _,
         cache_id_for_tasks,
         server_id,
         url_format_hint,
@@ -140,14 +157,7 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
         duration_hint,
     };
 
-    let mut playback_source = match build_source_from_play_input(
-        play_input,
-        state,
-        effective_hint.as_deref(),
-        &shape,
-    )
-    .await
-    {
+    match build_source_from_play_input(play_input, state, effective_hint.as_deref(), &shape).await {
         Ok(p) => Ok(p),
         Err(e) if is_stream_probe_failure_with_full_buffer_retry(&e, effective_hint.as_deref()) => {
             crate::app_deprintln!(
@@ -389,12 +399,7 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
             }
         }
         Err(e) => Err(e),
-    }?;
-    playback_source
-        .built
-        .source
-        .track_sample_counter_generation(state.current_generation.clone(), clock_generation);
-    Ok(playback_source)
+    }
 }
 
 /// Dispatch [`PlayInput`] → fully wrapped rodio source. For Bytes the full

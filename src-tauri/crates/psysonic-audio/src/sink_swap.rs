@@ -147,11 +147,7 @@ fn handoff_old_sink_fade_out(
 /// Only start the source while its published state is held under `current`.
 /// Checking the current sink and pause intent also makes a late duplicate
 /// starter harmless after a user pause or sink replacement.
-fn start_committed_player(
-    current: &AudioCurrent,
-    sink: &Arc<rodio::Player>,
-    start_playback: bool,
-) {
+fn start_committed_player(current: &AudioCurrent, sink: &Arc<rodio::Player>, start_playback: bool) {
     if start_playback
         && current.paused_at.is_none()
         && current
