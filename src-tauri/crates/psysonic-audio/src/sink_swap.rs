@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::engine::{AudioCurrent, AudioEngine};
 use super::preserve_worker::StreamingSeekHandle;
+use super::sources::activate_sample_counter_generation;
 
 /// Args for [`spawn_legacy_stream_start_when_armed`].
 pub(super) struct LegacyStreamStartWhenArmed {
@@ -179,9 +180,11 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
         cur.fadeout_trigger = Some(new_fadeout_trigger);
         cur.fadeout_samples = Some(new_fadeout_samples);
         cur.streaming_seek = streaming_seek;
-        state
-            .current_generation
-            .store(generation, Ordering::Release);
+        activate_sample_counter_generation(
+            &state.current_generation,
+            &state.samples_played,
+            generation,
+        );
         (old, old_fo_trigger, old_fo_samples)
     };
 

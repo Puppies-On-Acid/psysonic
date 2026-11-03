@@ -359,8 +359,8 @@ pub async fn audio_play(
 
     // Build source: decode → trim → resample → EQ → fade-in → fade-out → notify → count.
     let done_flag = Arc::new(AtomicBool::new(false));
-    // Reset sample counter for the new track.
-    state.samples_played.store(0, Ordering::Relaxed);
+    // The current source still owns progress while we decode the replacement.
+    // Its clock is reset only at the sink handoff.
     let playback_source = build_playback_source_with_probe_fallback(
         play_input,
         BuildSourceArgs {
@@ -404,6 +404,7 @@ pub async fn audio_play(
     let source_seekable = playback_source.is_seekable;
     let built = playback_source.built;
     let mut source = built.source;
+    source.track_sample_counter_generation(state.current_generation.clone(), gen);
     let duration_secs = built.duration_secs;
     let output_rate = built.output_rate;
     let output_channels = built.output_channels;
@@ -537,9 +538,9 @@ pub async fn audio_play(
     let needs_prefill =
         (hi_res_enabled && blend_rate.unwrap_or(output_rate) > 48_000) || needs_preserve_prefill;
     let defer_playback_start = !state.stream_playback_armed.load(Ordering::Relaxed);
-    if needs_prefill || defer_playback_start || start_paused {
-        sink.pause();
-    }
+    // The incoming source cannot consume audio until it owns the progress
+    // counter. This also preserves the existing hi-res/deferred prefill pause.
+    sink.pause();
 
     // Gapless OFF: prepend a short silence so tracks are clearly separated.
     // Only when this is an auto-advance (near end), not on manual skip.
@@ -652,9 +653,7 @@ pub async fn audio_play(
         if state.generation.load(Ordering::SeqCst) != gen {
             return Ok(()); // skipped during pre-fill — abort silently
         }
-        if !defer_playback_start && !start_paused {
-            sink.play();
-        }
+        // Start only after the atomic sink/counter handoff below.
     }
 
     // A staged cold start owns arming itself. Do not let the legacy background
@@ -722,6 +721,10 @@ pub async fn audio_play(
         );
     }
     drop(commit_guard);
+
+    if !defer_playback_start && !start_paused {
+        sink.play();
+    }
 
     if defer_playback_start && !require_start_seek {
         if !start_paused {

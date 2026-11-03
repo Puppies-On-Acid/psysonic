@@ -57,3 +57,142 @@ fn cancelled_source_exhausts_without_reading_more_successor_samples() {
     assert_eq!(src.next(), None);
     assert_eq!(src.current_span_len(), Some(0));
 }
+
+/** Tiny seekable stream at 10 samples/s so a 12 s blend only needs 120 samples. */
+struct TimedSamples {
+    remaining: usize,
+}
+
+impl Iterator for TimedSamples {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if self.remaining == 0 {
+            return None;
+        }
+        self.remaining -= 1;
+        Some(0.1)
+    }
+}
+
+impl Source for TimedSamples {
+    fn current_span_len(&self) -> Option<usize> {
+        Some(self.remaining)
+    }
+
+    fn channels(&self) -> rodio::ChannelCount {
+        std::num::NonZero::new(1).unwrap()
+    }
+
+    fn sample_rate(&self) -> rodio::SampleRate {
+        std::num::NonZero::new(10).unwrap()
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        Some(Duration::from_secs_f64(self.remaining as f64 / 10.0))
+    }
+
+    fn try_seek(&mut self, _pos: Duration) -> Result<(), rodio::source::SeekError> {
+        // Test position accounting only; no decoder or PCM seeking is required.
+        Ok(())
+    }
+}
+
+#[test]
+fn crossfade_tail_cannot_double_count_incoming_progress() {
+    let current_generation = Arc::new(AtomicU64::new(1));
+    let counter = Arc::new(AtomicU64::new(0));
+    let mut outgoing = CountingSource::new(TimedSamples { remaining: 300 }, counter.clone());
+    outgoing.track_generation(current_generation.clone(), 1);
+    let mut incoming = CountingSource::new(TimedSamples { remaining: 300 }, counter.clone());
+    incoming.track_generation(current_generation.clone(), 2);
+
+    for _ in 0..40 {
+        assert!(outgoing.next().is_some());
+    }
+    assert_eq!(counter.load(Ordering::Relaxed), 40);
+    // The incoming source is still private while the outgoing track plays.
+    assert!(incoming.next().is_some());
+    assert_eq!(counter.load(Ordering::Relaxed), 40);
+
+    activate_sample_counter_generation(&current_generation, &counter, 2);
+    for _ in 0..120 {
+        assert!(outgoing.next().is_some());
+        assert!(incoming.next().is_some());
+    }
+    // 12 s of simultaneous audio must advance the incoming clock by 12 s,
+    // not 24 s. Otherwise lyrics, seeking and the following AutoDJ trigger drift.
+    assert_eq!(counter.load(Ordering::Relaxed), 120);
+}
+
+#[test]
+fn inactive_source_seek_does_not_reanchor_active_progress() {
+    let current_generation = Arc::new(AtomicU64::new(1));
+    let counter = Arc::new(AtomicU64::new(20));
+    let mut outgoing = CountingSource::new(TimedSamples { remaining: 300 }, counter.clone());
+    outgoing.track_generation(current_generation.clone(), 1);
+    let mut incoming = CountingSource::new(TimedSamples { remaining: 300 }, counter.clone());
+    incoming.track_generation(current_generation.clone(), 2);
+
+    // B-head silence trimming happens before the new sink takes ownership.
+    assert!(incoming.try_seek(Duration::from_secs(4)).is_ok());
+    assert_eq!(counter.load(Ordering::Relaxed), 20);
+    activate_sample_counter_generation(&current_generation, &counter, 2);
+
+    // audio_play re-seeds the shared counter for B's successful start seek.
+    assert!(incoming.try_seek(Duration::from_secs(4)).is_ok());
+    assert_eq!(counter.load(Ordering::Relaxed), 40);
+    // A late seek/decoder action on the outgoing tail must never overwrite B.
+    assert!(outgoing.try_seek(Duration::from_secs(9)).is_ok());
+    assert_eq!(counter.load(Ordering::Relaxed), 40);
+    for _ in 0..30 {
+        assert!(incoming.next().is_some());
+        assert!(outgoing.next().is_some());
+    }
+    assert_eq!(counter.load(Ordering::Relaxed), 70);
+}
+
+#[test]
+fn repeated_handoffs_cannot_accumulate_earlier_track_samples() {
+    let current_generation = Arc::new(AtomicU64::new(1));
+    let counter = Arc::new(AtomicU64::new(0));
+    let mut a = CountingSource::new(TimedSamples { remaining: 10 }, counter.clone());
+    let mut b = CountingSource::new(TimedSamples { remaining: 10 }, counter.clone());
+    let mut c = CountingSource::new(TimedSamples { remaining: 10 }, counter.clone());
+    a.track_generation(current_generation.clone(), 1);
+    b.track_generation(current_generation.clone(), 2);
+    c.track_generation(current_generation.clone(), 3);
+
+    a.next();
+    activate_sample_counter_generation(&current_generation, &counter, 2);
+    a.next();
+    b.next();
+    assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+    activate_sample_counter_generation(&current_generation, &counter, 3);
+    b.next();
+    c.next();
+    assert_eq!(counter.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn stream_readiness_gate_and_playback_ownership_both_apply() {
+    let current_generation = Arc::new(AtomicU64::new(4));
+    let counter = Arc::new(AtomicU64::new(0));
+    let ready = Arc::new(AtomicBool::new(false));
+    let mut source = CountingSource::new_gated(
+        TimedSamples { remaining: 10 },
+        counter.clone(),
+        ready.clone(),
+    );
+    source.track_generation(current_generation.clone(), 4);
+
+    source.next();
+    assert_eq!(counter.load(Ordering::Relaxed), 0);
+    ready.store(true, Ordering::SeqCst);
+    source.next();
+    assert_eq!(counter.load(Ordering::Relaxed), 1);
+    current_generation.store(5, Ordering::SeqCst);
+    source.next();
+    assert_eq!(counter.load(Ordering::Relaxed), 1);
+}
