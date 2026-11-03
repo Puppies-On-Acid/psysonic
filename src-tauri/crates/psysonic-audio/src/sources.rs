@@ -384,12 +384,13 @@ impl<S: Source<Item = f32>> CountingSource<S> {
     }
 
     fn should_count(&self) -> bool {
-        self.owner_generation.as_ref().is_none_or(|(active, generation)| {
-            active.load(Ordering::Acquire) == *generation
-        }) && self
-            .count_gate
+        self.owner_generation
             .as_ref()
-            .is_none_or(|g| g.load(Ordering::Relaxed))
+            .is_none_or(|(active, generation)| active.load(Ordering::Acquire) == *generation)
+            && self
+                .count_gate
+                .as_ref()
+                .is_none_or(|g| g.load(Ordering::Relaxed))
     }
 }
 
