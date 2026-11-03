@@ -63,7 +63,6 @@ fn does_not_retry_unrelated_legacy_stream_failures() {
     ));
 }
 
-
 /// Exercises the real WAV decode -> source wrapper pipeline. Hi-Res outgoing
 /// rebuilds use B's decode request generation but retain A's clock ownership.
 #[tokio::test]
