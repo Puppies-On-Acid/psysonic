@@ -15,7 +15,7 @@ use super::helpers::*;
 use super::hi_res_blend::{self, OutgoingBlendSnapshot};
 use super::ipc::{maybe_emit_normalization_state, NormalizationStatePayload};
 use super::play_input::{select_play_input, url_format_hint, PlayInputContext};
-use super::playback_rate::{preserve_pitch_will_run, raw_counter_samples_for_content_position};
+use super::playback_rate::preserve_pitch_will_run;
 use super::preload_commands::{publish_preloaded_if_current, PreloadSnapshot};
 use super::preview::preview_clear_for_new_main_playback;
 use super::progress_task::spawn_progress_task;
@@ -366,6 +366,7 @@ pub async fn audio_play(
         BuildSourceArgs {
             url: &url,
             gen,
+            clock_generation: gen,
             cache_id_for_tasks: cache_id_for_tasks.as_deref(),
             server_id: analysis_server_id,
             url_format_hint: format_hint.as_deref(),
@@ -404,7 +405,6 @@ pub async fn audio_play(
     let source_seekable = playback_source.is_seekable;
     let built = playback_source.built;
     let mut source = built.source;
-    source.track_sample_counter_generation(state.current_generation.clone(), gen);
     let duration_secs = built.duration_secs;
     let output_rate = built.output_rate;
     let output_channels = built.output_channels;
@@ -694,37 +694,16 @@ pub async fn audio_play(
             actual_fade_secs,
             outgoing_fade_secs,
             start_paused,
+            start_playback: !defer_playback_start && !start_paused,
+            start_position_secs: did_start_seek.then_some(start_secs),
             streaming_seek,
         },
     );
     drop(stream_attach);
 
-    // B-head: `swap_in_new_sink` resets `seek_offset` to 0 and starts the play
-    // clock — re-anchor both the wall-clock baseline (`seek_offset`) and the
-    // sample counter to the content offset so position reporting is correct.
-    if did_start_seek {
-        {
-            let mut cur = state.current.lock().unwrap();
-            cur.seek_offset = start_secs;
-            if start_paused {
-                cur.paused_at = Some(start_secs);
-            }
-        }
-        state.samples_played.store(
-            raw_counter_samples_for_content_position(
-                start_secs,
-                output_rate,
-                output_channels as u32,
-                &state.playback_rate,
-            ),
-            Ordering::Relaxed,
-        );
-    }
+    // Ownership, optional B-head seek offset, and the first play() call are
+    // committed together while `current` is locked, so pause cannot be lost.
     drop(commit_guard);
-
-    if !defer_playback_start && !start_paused {
-        sink.play();
-    }
 
     if defer_playback_start && !require_start_seek {
         if !start_paused {

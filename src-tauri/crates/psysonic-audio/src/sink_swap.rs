@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 use super::engine::{AudioCurrent, AudioEngine};
+use super::playback_rate::raw_counter_samples_for_content_position;
 use super::preserve_worker::StreamingSeekHandle;
 use super::sources::activate_sample_counter_generation;
 
@@ -99,6 +100,10 @@ pub(crate) struct SinkSwapInputs {
     /// `0` ⇒ don't fade A — it rides its own recorded fade-out (scenario A).
     pub(crate) outgoing_fade_secs: f32,
     pub(crate) start_paused: bool,
+    /// Start the committed player while the current-sink mutex is held.
+    pub(crate) start_playback: bool,
+    /// Re-seed the clock after a successful head/resume seek, before playback.
+    pub(crate) start_position_secs: Option<f64>,
     pub(crate) streaming_seek: Option<StreamingSeekHandle>,
 }
 
@@ -139,6 +144,25 @@ fn handoff_old_sink_fade_out(
     });
 }
 
+/// Only start the source while its published state is held under `current`.
+/// Checking the current sink and pause intent also makes a late duplicate
+/// starter harmless after a user pause or sink replacement.
+fn start_committed_player(
+    current: &AudioCurrent,
+    sink: &Arc<rodio::Player>,
+    start_playback: bool,
+) {
+    if start_playback
+        && current.paused_at.is_none()
+        && current
+            .sink
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, sink))
+    {
+        sink.play();
+    }
+}
+
 /// Atomically swap the new sink into `state.current`, then handle the old
 /// sink: trigger sample-level fade-out (crossfade enabled) or stop it
 /// immediately (hard cut). The fade-out is handed off to a small spawned
@@ -156,6 +180,8 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
         actual_fade_secs,
         outgoing_fade_secs,
         start_paused,
+        start_playback,
+        start_position_secs,
         streaming_seek,
     } = inputs;
 
@@ -166,11 +192,11 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
         let old_fo_samples = cur.fadeout_samples.take();
         cur.sink = Some(sink.clone());
         cur.duration_secs = duration_secs;
-        cur.seek_offset = 0.0;
+        cur.seek_offset = start_position_secs.unwrap_or(0.0);
         if start_paused {
             sink.pause();
             cur.play_started = None;
-            cur.paused_at = Some(0.0);
+            cur.paused_at = Some(cur.seek_offset);
         } else {
             cur.play_started = Some(Instant::now());
             cur.paused_at = None;
@@ -180,11 +206,25 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
         cur.fadeout_trigger = Some(new_fadeout_trigger);
         cur.fadeout_samples = Some(new_fadeout_samples);
         cur.streaming_seek = streaming_seek;
+        let initial_samples = start_position_secs
+            .map(|secs| {
+                raw_counter_samples_for_content_position(
+                    secs,
+                    state.current_sample_rate.load(Ordering::Relaxed),
+                    state.current_channels.load(Ordering::Relaxed),
+                    &state.playback_rate,
+                )
+            })
+            .unwrap_or(0);
         activate_sample_counter_generation(
             &state.current_generation,
             &state.samples_played,
             generation,
+            initial_samples,
         );
+        // A simultaneous audio_pause waits for `current`, then pauses a
+        // running player; it can no longer miss the transition.
+        start_committed_player(&cur, &sink, start_playback);
         (old, old_fo_trigger, old_fo_samples)
     };
 
@@ -222,4 +262,68 @@ pub(crate) fn swap_in_new_sink(state: &State<'_, AudioEngine>, inputs: SinkSwapI
     state
         .interrupt_outgoing_duck_active
         .store(false, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::num::{NonZeroU16, NonZeroU32};
+
+    fn test_current(sink: Arc<rodio::Player>) -> Mutex<AudioCurrent> {
+        Mutex::new(AudioCurrent {
+            sink: Some(sink),
+            duration_secs: 30.0,
+            seek_offset: 0.0,
+            play_started: None,
+            paused_at: None,
+            replay_gain_linear: 1.0,
+            base_volume: 0.8,
+            fadeout_trigger: None,
+            fadeout_samples: None,
+            streaming_seek: None,
+        })
+    }
+
+    #[test]
+    fn committed_sink_start_cannot_undo_user_pause() {
+        // Rodio's software mixer needs no output device for this transport test.
+        let (mixer, _output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+        let sink = Arc::new(rodio::Player::connect_new(&mixer));
+        sink.pause();
+        let current = test_current(sink.clone());
+
+        // The actual swap starts the source while holding this same mutex.
+        {
+            let cur = current.lock().unwrap();
+            start_committed_player(&cur, &sink, true);
+        }
+        assert!(!sink.is_paused());
+
+        // The pause command runs next; no delayed start can override it.
+        {
+            let mut cur = current.lock().unwrap();
+            sink.pause();
+            cur.play_started = None;
+            cur.paused_at = Some(0.0);
+            start_committed_player(&cur, &sink, true);
+        }
+        assert!(sink.is_paused());
+    }
+
+    #[test]
+    fn deferred_and_silent_commits_do_not_start_the_sink() {
+        let (mixer, _output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+        let sink = Arc::new(rodio::Player::connect_new(&mixer));
+        sink.pause();
+        let current = test_current(sink.clone());
+        let cur = current.lock().unwrap();
+        start_committed_player(&cur, &sink, false);
+        assert!(sink.is_paused());
+    }
 }

@@ -39,6 +39,8 @@ pub(crate) fn blend_rate_hz(
 pub(crate) struct OutgoingBlendSnapshot {
     pub(crate) url: String,
     pub(crate) position_secs: f64,
+    /// Outgoing progress-clock owner before the incoming sink is committed.
+    pub(crate) clock_generation: u64,
     pub(crate) duration_secs: f64,
     pub(crate) base_volume: f32,
     pub(crate) gain_linear: f32,
@@ -75,6 +77,7 @@ pub(crate) fn capture_outgoing_blend_snapshot(
     Some(OutgoingBlendSnapshot {
         url,
         position_secs,
+        clock_generation: state.current_generation.load(Ordering::Acquire),
         duration_secs,
         base_volume,
         gain_linear,
@@ -169,6 +172,7 @@ pub(crate) async fn spawn_outgoing_blend_resample(
         BuildSourceArgs {
             url: &snap.url,
             gen,
+            clock_generation: snap.clock_generation,
             cache_id_for_tasks: snap.analysis_track_id.as_deref(),
             server_id: Some(resume_server.as_str()),
             url_format_hint: format_hint.as_deref(),
@@ -274,6 +278,7 @@ pub(crate) async fn rebuild_current_track_at_blend_rate(
         BuildSourceArgs {
             url: &snap.url,
             gen,
+            clock_generation: snap.clock_generation,
             cache_id_for_tasks: snap.analysis_track_id.as_deref(),
             server_id: Some(resume_server.as_str()),
             url_format_hint: format_hint.as_deref(),
@@ -306,6 +311,7 @@ pub(crate) async fn rebuild_current_track_at_blend_rate(
     }
     let effective_volume = (snap.base_volume * snap.gain_linear).clamp(0.0, 1.0);
     sink.set_volume(effective_volume);
+    sink.pause();
     let config = state
         .stream_handle
         .lock()
@@ -330,11 +336,10 @@ pub(crate) async fn rebuild_current_track_at_blend_rate(
         return Ok(());
     }
     state.pending_seek.lock().unwrap().clear_generation(gen);
-    sink.play();
 
     {
         let mut cur = state.current.lock().unwrap();
-        cur.sink = Some(sink);
+        cur.sink = Some(sink.clone());
         cur.duration_secs = ps.built.duration_secs;
         cur.seek_offset = snap.position_secs;
         cur.play_started = Some(Instant::now());
@@ -344,19 +349,20 @@ pub(crate) async fn rebuild_current_track_at_blend_rate(
         cur.fadeout_trigger = Some(ps.built.fadeout_trigger);
         cur.fadeout_samples = Some(ps.built.fadeout_samples);
         cur.streaming_seek = None;
+        // Publish the recovered offset before releasing the paused source.
+        state.samples_played.store(
+            raw_counter_samples_for_content_position(
+                snap.position_secs,
+                ps.built.output_rate,
+                ps.built.output_channels as u32,
+                &state.playback_rate,
+            ),
+            Ordering::Relaxed,
+        );
+        sink.play();
     }
     drop(stream_attach);
     drop(commit_guard);
-
-    state.samples_played.store(
-        raw_counter_samples_for_content_position(
-            snap.position_secs,
-            ps.built.output_rate,
-            ps.built.output_channels as u32,
-            &state.playback_rate,
-        ),
-        Ordering::Relaxed,
-    );
     if !install_current_source_done(
         &state.current_source_done,
         &state.generation,

@@ -38,6 +38,9 @@ use fallback::{
 pub(crate) struct BuildSourceArgs<'a> {
     pub url: &'a str,
     pub gen: u64,
+    /// Owner of the shared progress clock; an outgoing Hi-Res rebuild
+    /// keeps A's owner even when its decode task uses B's request generation.
+    pub clock_generation: u64,
     pub cache_id_for_tasks: Option<&'a str>,
     pub server_id: Option<&'a str>,
     pub url_format_hint: Option<&'a str>,
@@ -105,6 +108,7 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
     let BuildSourceArgs {
         url,
         gen,
+        clock_generation,
         cache_id_for_tasks,
         server_id,
         url_format_hint,
@@ -136,7 +140,14 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
         duration_hint,
     };
 
-    match build_source_from_play_input(play_input, state, effective_hint.as_deref(), &shape).await {
+    let mut playback_source = match build_source_from_play_input(
+        play_input,
+        state,
+        effective_hint.as_deref(),
+        &shape,
+    )
+    .await
+    {
         Ok(p) => Ok(p),
         Err(e) if is_stream_probe_failure_with_full_buffer_retry(&e, effective_hint.as_deref()) => {
             crate::app_deprintln!(
@@ -378,7 +389,12 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
             }
         }
         Err(e) => Err(e),
-    }
+    }?;
+    playback_source
+        .built
+        .source
+        .track_sample_counter_generation(state.current_generation.clone(), clock_generation);
+    Ok(playback_source)
 }
 
 /// Dispatch [`PlayInput`] → fully wrapped rodio source. For Bytes the full

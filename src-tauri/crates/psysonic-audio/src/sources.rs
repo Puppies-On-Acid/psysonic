@@ -434,16 +434,18 @@ impl<S: Source<Item = f32>> Source for CountingSource<S> {
     }
 }
 
-/// Transfer the shared progress clock to a new source, clearing any samples
-/// from the previous track. The temporary ownerless state prevents either
-/// crossfade tail from advancing the counter during the reset.
+/// Transfer the shared progress clock to a new source at its starting offset.
+/// The brief ownerless state excludes newly checked samples from old sources;
+/// a callback already past its ownership check may contribute one stray sample
+/// during the handoff, but the outgoing tail cannot continue to accumulate.
 pub(crate) fn activate_sample_counter_generation(
     current_generation: &AtomicU64,
     samples_played: &AtomicU64,
     generation: u64,
+    start_samples: u64,
 ) {
     current_generation.store(0, Ordering::SeqCst);
-    samples_played.store(0, Ordering::SeqCst);
+    samples_played.store(start_samples, Ordering::SeqCst);
     current_generation.store(generation, Ordering::SeqCst);
 }
 
