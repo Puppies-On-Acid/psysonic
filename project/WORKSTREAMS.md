@@ -17,7 +17,7 @@
 | PSY-011 | Weighted sorting | Brainstormed; explicitly postponed | Not authorized to implement |
 | PSY-012 | Governance / living handoff | Hub v0.1 owner-ratified (D-012); public [Issue #1](https://github.com/Puppies-On-Acid/psysonic/issues/1) tracking migration owner-authorized (D-013) | Keep a single live handoff and the project hub current; continue factual maintenance |
 | [PSY-013](https://github.com/Puppies-On-Acid/psysonic/issues/10) | Queue independence regression watch | [#1732](https://github.com/Psysonic/psysonic/pull/1732) merged upstream | Recheck device-order case if reproducible; do not assume merged == fixed in every configuration |
-| [PSY-014](https://github.com/Puppies-On-Acid/psysonic/issues/12) | AutoDJ/Crossfade playback-clock drift | Owner-reported reproducible seekbar/lyrics drift; corrective fork branch `fix/autodj-crossfade-playback-clock` candidate `56c73e4` pushed after read-only Claude findings | New SHA-specific Rust fmt/tests/Clippy, real-device AutoDJ/Hi-Res/recovery smoke, independent review, owner PR decision; no branch rewrite/merge authorized |
+| [PSY-014](https://github.com/Puppies-On-Acid/psysonic/issues/12) | AutoDJ/Crossfade playback-clock drift | Owner-reported seekbar/lyrics drift; corrective fork branch `fix/autodj-crossfade-playback-clock` in verification after read-only Claude findings | Exact-HEAD Rust fmt/tests/Clippy, real-device AutoDJ/Hi-Res/recovery smoke, independent review, owner PR decision; no branch rewrite/merge authorized |
 
 ## Explorer / Genre Tracks live verification gates
 
