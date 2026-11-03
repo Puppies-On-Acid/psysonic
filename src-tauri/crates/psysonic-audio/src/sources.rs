@@ -435,9 +435,9 @@ impl<S: Source<Item = f32>> Source for CountingSource<S> {
 }
 
 /// Transfer the shared progress clock to a new source at its starting offset.
-/// The brief ownerless state excludes newly checked samples from old sources;
-/// a callback already past its ownership check may contribute one stray sample
-/// during the handoff, but the outgoing tail cannot continue to accumulate.
+/// The brief ownerless state excludes newly checked samples from old sources.
+/// An in-flight sample or a successful seek that already passed the ownership
+/// check can still race this handoff; no hard atomic fencing is implied.
 pub(crate) fn activate_sample_counter_generation(
     current_generation: &AtomicU64,
     samples_played: &AtomicU64,

@@ -395,4 +395,20 @@ mod tests {
         assert_eq!(blend_rate_hz(true, true, Some(88_200)), Some(88_200));
         assert_eq!(blend_rate_hz(true, true, Some(48_000)), Some(44_100));
     }
+
+    #[test]
+    fn outgoing_snapshot_captures_active_clock_owner() {
+        let engine = crate::stream_idle::tests::minimal_engine();
+        engine.current_generation.store(17, Ordering::Release);
+        *engine.current_playback_url.lock().unwrap() = Some("file:///synthetic.wav".into());
+        let (player, _queue_output) = rodio::Player::new();
+        {
+            let mut current = engine.current.lock().unwrap();
+            current.sink = Some(Arc::new(player));
+            current.duration_secs = 20.0;
+            current.play_started = Some(Instant::now());
+        }
+        let snapshot = capture_outgoing_blend_snapshot(&engine, 0.5, 0.5).unwrap();
+        assert_eq!(snapshot.clock_generation, 17);
+    }
 }

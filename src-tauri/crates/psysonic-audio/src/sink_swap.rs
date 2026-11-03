@@ -144,9 +144,8 @@ fn handoff_old_sink_fade_out(
     });
 }
 
-/// Only start the source while its published state is held under `current`.
-/// Checking the current sink and pause intent also makes a late duplicate
-/// starter harmless after a user pause or sink replacement.
+/// Start the just-published source under `current` so a concurrent pause
+/// cannot interleave between sink publication and play().
 fn start_committed_player(current: &AudioCurrent, sink: &Arc<rodio::Player>, start_playback: bool) {
     if start_playback
         && current.paused_at.is_none()
@@ -321,5 +320,169 @@ mod tests {
         let cur = current.lock().unwrap();
         start_committed_player(&cur, &sink, false);
         assert!(sink.is_paused());
+    }
+
+    /// Infinite stereo PCM with a separate counter for *actual* samples mixed.
+    /// It distinguishes the outgoing tail from the incoming track's samples.
+    struct ObservedPcm {
+        consumed: Arc<AtomicU64>,
+    }
+
+    impl Iterator for ObservedPcm {
+        type Item = f32;
+
+        fn next(&mut self) -> Option<f32> {
+            self.consumed.fetch_add(1, Ordering::Relaxed);
+            Some(0.01)
+        }
+    }
+
+    impl rodio::Source for ObservedPcm {
+        fn current_span_len(&self) -> Option<usize> {
+            None
+        }
+
+        fn channels(&self) -> rodio::ChannelCount {
+            NonZeroU16::new(2).unwrap()
+        }
+
+        fn sample_rate(&self) -> rodio::SampleRate {
+            NonZeroU32::new(48_000).unwrap()
+        }
+
+        fn total_duration(&self) -> Option<Duration> {
+            None
+        }
+    }
+
+    fn observed_player(
+        mixer: &rodio::mixer::Mixer,
+        engine: &AudioEngine,
+        generation: u64,
+    ) -> (Arc<rodio::Player>, Arc<AtomicU64>) {
+        let consumed = Arc::new(AtomicU64::new(0));
+        let mut counted = crate::sources::CountingSource::new(
+            ObservedPcm {
+                consumed: Arc::clone(&consumed),
+            },
+            engine.samples_played.clone(),
+        );
+        counted.track_generation(engine.current_generation.clone(), generation);
+        let sink = Arc::new(rodio::Player::connect_new(mixer));
+        sink.pause();
+        sink.append(counted);
+        (sink, consumed)
+    }
+
+    fn swap_args(
+        generation: u64,
+        sink: Arc<rodio::Player>,
+        crossfade: bool,
+        start_position_secs: Option<f64>,
+    ) -> SinkSwapInputs {
+        SinkSwapInputs {
+            generation,
+            sink,
+            duration_secs: 30.0,
+            volume: 1.0,
+            gain_linear: 1.0,
+            fadeout_trigger: Arc::new(AtomicBool::new(false)),
+            fadeout_samples: Arc::new(AtomicU64::new(0)),
+            crossfade_enabled: crossfade,
+            actual_fade_secs: 1.0,
+            outgoing_fade_secs: if crossfade { 1.0 } else { 0.0 },
+            start_paused: false,
+            start_playback: true,
+            start_position_secs,
+            streaming_seek: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn real_sink_crossfade_counts_only_incoming_mixed_samples() {
+        use tauri::Manager;
+
+        let app = tauri::test::mock_app();
+        app.manage(crate::stream_idle::tests::minimal_engine());
+        let state = app.state::<AudioEngine>();
+        state.current_sample_rate.store(48_000, Ordering::Relaxed);
+        state.current_channels.store(2, Ordering::Relaxed);
+        let (mixer, mut output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+
+        let (sink_a, observed_a) = observed_player(&mixer, &state, 1);
+        swap_in_new_sink(&state, swap_args(1, sink_a, false, None));
+        for _ in 0..512 {
+            assert!(output.next().is_some());
+        }
+        assert!(observed_a.load(Ordering::Relaxed) > 0);
+        assert_eq!(
+            state.samples_played.load(Ordering::Relaxed),
+            observed_a.load(Ordering::Relaxed)
+        );
+
+        let (sink_b, observed_b) = observed_player(&mixer, &state, 2);
+        swap_in_new_sink(&state, swap_args(2, sink_b.clone(), true, None));
+        assert_eq!(state.current_generation.load(Ordering::Acquire), 2);
+        assert_eq!(state.samples_played.load(Ordering::Relaxed), 0);
+        assert!(!sink_b.is_paused());
+
+        let old_before = observed_a.load(Ordering::Relaxed);
+        for _ in 0..512 {
+            assert!(output.next().is_some());
+        }
+        assert!(
+            observed_a.load(Ordering::Relaxed) > old_before,
+            "outgoing source did not contribute overlapping audio"
+        );
+        assert!(observed_b.load(Ordering::Relaxed) > 0);
+        assert_eq!(
+            state.samples_played.load(Ordering::Relaxed),
+            observed_b.load(Ordering::Relaxed),
+            "outgoing audio must not advance the incoming playback clock"
+        );
+    }
+
+    #[tokio::test]
+    async fn real_swap_head_offset_and_immediate_pause_remain_committed() {
+        use tauri::Manager;
+
+        let app = tauri::test::mock_app();
+        app.manage(crate::stream_idle::tests::minimal_engine());
+        let state = app.state::<AudioEngine>();
+        state.current_sample_rate.store(48_000, Ordering::Relaxed);
+        state.current_channels.store(2, Ordering::Relaxed);
+        let (mixer, mut output) = rodio::mixer::mixer(
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(48_000).unwrap(),
+        );
+
+        let (sink_a, _) = observed_player(&mixer, &state, 1);
+        swap_in_new_sink(&state, swap_args(1, sink_a, false, None));
+        for _ in 0..128 {
+            assert!(output.next().is_some());
+        }
+
+        let (sink_b, observed_b) = observed_player(&mixer, &state, 2);
+        swap_in_new_sink(&state, swap_args(2, sink_b.clone(), true, Some(3.0)));
+        let seeded_samples = 3 * 48_000 * 2;
+        assert_eq!(state.samples_played.load(Ordering::Relaxed), seeded_samples);
+        assert!(!sink_b.is_paused());
+
+        // Exercise the real transport command immediately after publication.
+        crate::transport_commands::audio_pause(None, app.state::<AudioEngine>());
+        assert!(sink_b.is_paused());
+        assert_eq!(state.current.lock().unwrap().paused_at, Some(3.0));
+        for _ in 0..512 {
+            assert!(output.next().is_some());
+        }
+        assert_eq!(observed_b.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            state.samples_played.load(Ordering::Relaxed),
+            seeded_samples,
+            "delayed playback or outgoing audio must not undo the paused clock"
+        );
     }
 }
