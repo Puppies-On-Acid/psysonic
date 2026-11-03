@@ -63,8 +63,8 @@ fn does_not_retry_unrelated_legacy_stream_failures() {
     ));
 }
 
-/// Exercises the real WAV decode -> source wrapper pipeline. Hi-Res outgoing
-/// rebuilds use B's decode request generation but retain A's clock ownership.
+/// Exercises the real WAV decoder and shared source-construction path.
+/// Hi-Res outgoing rebuilds retain A's clock owner while B is being prepared.
 #[tokio::test]
 async fn built_pcm_source_obeys_the_explicit_clock_generation() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -94,35 +94,31 @@ async fn built_pcm_source_obeys_the_explicit_clock_generation() {
     let state = app.state::<crate::engine::AudioEngine>();
     state.current_generation.store(7, Ordering::Release);
 
-    let args = |clock_generation| super::BuildSourceArgs {
-        url: "synthetic.wav",
-        gen: 8,
-        clock_generation,
-        cache_id_for_tasks: None,
-        server_id: None,
-        url_format_hint: Some("wav"),
-        stream_format_suffix: Some("wav"),
+    let shape = |clock_generation| super::PlaybackSourceShape {
         done_flag: Arc::new(AtomicBool::new(false)),
+        clock_generation,
         fade_in_dur: Duration::ZERO,
         hi_res_enabled: false,
         resample_target_hz: 0,
         duration_hint: 0.1,
     };
-    let mut outgoing = super::build_playback_source_with_probe_fallback(
+    let outgoing_shape = shape(7);
+    let incoming_shape = shape(8);
+    let mut outgoing = super::build_source_from_play_input(
         super::super::play_input::PlayInput::Bytes(wav.clone()),
-        args(7),
         &state,
-        app.handle(),
+        Some("wav"),
+        &outgoing_shape,
     )
     .await
     .unwrap()
     .built
     .source;
-    let mut incoming = super::build_playback_source_with_probe_fallback(
+    let mut incoming = super::build_source_from_play_input(
         super::super::play_input::PlayInput::Bytes(wav),
-        args(8),
         &state,
-        app.handle(),
+        Some("wav"),
+        &incoming_shape,
     )
     .await
     .unwrap()
