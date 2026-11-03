@@ -327,6 +327,7 @@ pub(crate) async fn build_playback_source_with_probe_fallback(
                         fresh_hint.as_deref(),
                         &PlaybackSourceShape {
                             done_flag,
+                            clock_generation,
                             fade_in_dur,
                             hi_res_enabled,
                             resample_target_hz,
