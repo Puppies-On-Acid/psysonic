@@ -684,7 +684,7 @@ pub async fn audio_play(
         &state,
         SinkSwapInputs {
             generation: gen,
-            sink,
+            sink: sink.clone(),
             duration_secs,
             volume,
             gain_linear,
