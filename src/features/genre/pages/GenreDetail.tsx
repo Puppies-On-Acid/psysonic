@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Play, ListPlus, Loader2 } from 'lucide-react';
 import { AlbumCard } from '@/features/album';
+import { PagedSongList } from '@/features/search';
 import { LongPressWaveOverlay } from '@/ui/LongPressWaveOverlay';
 import InpageScrollSentinel from '@/ui/InpageScrollSentinel';
 import OverlayScrollArea from '@/ui/OverlayScrollArea';
 import { VirtualCardGrid } from '@/ui/VirtualCardGrid';
 import { GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID } from '@/constants/appScroll';
 import { albumGridWarmCovers } from '@/cover/layoutSizes';
-import { useAlbumBrowseScrollSnapshotSync, type AlbumBrowseScrollSnapshot } from '@/features/album';
+import { type AlbumBrowseScrollSnapshot } from '@/features/album';
 import { useGenreAlbumBrowse } from '@/features/album';
 import { useAlbumBrowseScrollRestore } from '@/features/album';
 import { useGenreDetailBrowse } from '@/features/genre/hooks/useGenreDetailBrowse';
+import { useGenreTrackBrowse } from '@/features/genre/hooks/useGenreTrackBrowse';
+import { useInpageScrollSentinel } from '@/lib/hooks/useInpageScrollSentinel';
 import { useInpageScrollViewport } from '@/lib/hooks/useInpageScrollViewport';
 import { useLongPressAction } from '@/lib/hooks/useLongPressAction';
 import { useMainstageInpageHeaderTight } from '@/lib/hooks/useMainstageInpageHeaderTight';
@@ -31,10 +41,22 @@ import {
   readAlbumDetailReturnTo,
 } from '@/lib/navigation/albumDetailNavigation';
 import { usePerfProbeFlags } from '@/lib/perf/perfFlags';
-import { runBulkEnqueue, runBulkPlayAll, runBulkShuffle } from '@/features/playback/utils/playback/runBulkPlay';
+import {
+  runBulkEnqueue,
+  runBulkPlayAll,
+  runBulkShuffle,
+} from '@/features/playback/utils/playback/runBulkPlay';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { useUnavailableServerIds } from '@/lib/network/serverReachability';
 import { resolveGenreHeaderCount } from './genreHeaderCount';
+
+type GenreDetailView = 'albums' | 'tracks';
+
+function genreDetailView(search: string): GenreDetailView {
+  return new URLSearchParams(search).get('view') === 'tracks'
+    ? 'tracks'
+    : 'albums';
+}
 
 export default function GenreDetail() {
   const { name } = useParams<{ name: string }>();
@@ -43,6 +65,7 @@ export default function GenreDetail() {
   const perfFlags = usePerfProbeFlags();
   const navigate = useNavigate();
   const location = useLocation();
+  const view = genreDetailView(location.search);
   const musicLibraryFilterVersion = useAuthStore(s => s.musicLibraryFilterVersion);
   const activeServerId = useAuthStore(s => s.activeServerId ?? '');
   const servers = useAuthStore(s => s.servers);
@@ -72,9 +95,50 @@ export default function GenreDetail() {
   const playTrack = usePlayerStore(s => s.playTrack);
   const enqueue = usePlayerStore(s => s.enqueue);
 
-  const scrollSnapshotRef = useRef<AlbumBrowseScrollSnapshot>({ scrollTop: 0, displayCount: 0 });
+  const albumScrollSnapshotRef = useRef<AlbumBrowseScrollSnapshot>({
+    scrollTop: 0,
+    displayCount: 0,
+  });
+  const trackScrollSnapshotRef = useRef<AlbumBrowseScrollSnapshot>({
+    scrollTop: 0,
+    displayCount: 0,
+  });
+  const activeScrollSnapshotRef =
+    view === 'albums'
+      ? albumScrollSnapshotRef
+      : trackScrollSnapshotRef;
+  const tabScrollSessionKey = JSON.stringify([
+    serverId,
+    genre,
+    musicLibraryFilterVersion,
+    browseScope.fingerprint,
+  ]);
+  const tabScrollSessionKeyRef = useRef(tabScrollSessionKey);
+  const previousViewRef = useRef<GenreDetailView>(view);
+  const pendingTabScrollRestoreRef = useRef<GenreDetailView | null>(null);
 
-  const { sort, restoreDisplayCount } = useGenreDetailBrowse(serverId, genre, scrollSnapshotRef);
+  const {
+    sort,
+    restoreDisplayCount,
+    restoreView,
+    restoreTabScrollSnapshots,
+  } = useGenreDetailBrowse(
+    serverId,
+    genre,
+    activeScrollSnapshotRef,
+    albumScrollSnapshotRef,
+    trackScrollSnapshotRef,
+  );
+
+  useLayoutEffect(() => {
+    if (!restoreTabScrollSnapshots) return;
+    albumScrollSnapshotRef.current = {
+      ...restoreTabScrollSnapshots.albums,
+    };
+    trackScrollSnapshotRef.current = {
+      ...restoreTabScrollSnapshots.tracks,
+    };
+  }, [restoreTabScrollSnapshots]);
 
   const {
     scrollBodyEl,
@@ -82,43 +146,250 @@ export default function GenreDetail() {
     getScrollRoot,
   } = useInpageScrollViewport();
 
-  const {
-    albums,
-    loading,
-    loadingMore,
-    hasMore,
-    displayAlbums,
-    bindLoadMoreSentinel,
-    loadMore,
-  } = useGenreAlbumBrowse(
+  const albumSessionKey = JSON.stringify([
     serverId,
     genre,
+    indexEnabled,
+    sort,
+    musicLibraryFilterVersion,
+    browseScope.fingerprint,
+  ]);
+  const [albumSession, setAlbumSession] = useState(() => ({
+    key: albumSessionKey,
+    started: view === 'albums',
+  }));
+  const albumSessionStarted =
+    albumSession.key === albumSessionKey
+      ? albumSession.started || view === 'albums'
+      : view === 'albums';
+
+  useEffect(() => {
+    const nextStarted =
+      albumSession.key === albumSessionKey
+        ? albumSession.started || view === 'albums'
+        : view === 'albums';
+
+    if (
+      albumSession.key === albumSessionKey &&
+      albumSession.started === nextStarted
+    ) {
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAlbumSession({
+      key: albumSessionKey,
+      started: nextStarted,
+    });
+  }, [
+    albumSession.key,
+    albumSession.started,
+    albumSessionKey,
+    view,
+  ]);
+
+  const albumGenre = albumSessionStarted ? genre : '';
+  const {
+    albums,
+    loading: albumsLoading,
+    loadingMore: albumsLoadingMore,
+    hasMore: albumsHasMore,
+    displayAlbums,
+    bindLoadMoreSentinel,
+    loadMore: loadMoreAlbums,
+  } = useGenreAlbumBrowse(
+    serverId,
+    albumGenre,
     indexEnabled,
     sort,
     musicLibraryFilterVersion,
     browseScope,
     getScrollRoot,
     scrollBodyEl,
-    restoreDisplayCount,
+    restoreTabScrollSnapshots?.albums.displayCount ??
+      (restoreView === 'albums'
+        ? restoreDisplayCount
+        : undefined),
   );
 
-  useAlbumBrowseScrollSnapshotSync(scrollSnapshotRef, scrollBodyEl, displayAlbums.length);
+  const {
+    songs,
+    total: trackCount,
+    loading: tracksLoading,
+    sessionReady: tracksSessionReady,
+    loadingMore: tracksLoadingMore,
+    hasMore: tracksHasMore,
+    loadMore: loadMoreTracks,
+  } = useGenreTrackBrowse(
+    serverId,
+    genre,
+    indexEnabled,
+    view === 'tracks',
+    musicLibraryFilterVersion,
+    browseScope,
+  );
+
+  const bindTrackLoadMoreSentinel = useInpageScrollSentinel({
+    active: view === 'tracks' && tracksHasMore,
+    getScrollRoot,
+    scrollRootEl: scrollBodyEl,
+    onIntersect: loadMoreTracks,
+    rootMargin: '600px',
+  });
+
+  const activeDisplayCount =
+    view === 'albums'
+      ? displayAlbums.length
+      : songs.length;
+  const activeLoading =
+    view === 'albums'
+      ? albumsLoading
+      : tracksLoading;
+  const activeLoadingMore =
+    view === 'albums'
+      ? albumsLoadingMore
+      : tracksLoadingMore;
+  const activeSessionReady =
+    view === 'albums'
+      ? !albumsLoading
+      : tracksSessionReady;
+  const activeHasMore =
+    view === 'albums'
+      ? albumsHasMore
+      : tracksHasMore;
+  const activeLoadMore =
+    view === 'albums'
+      ? loadMoreAlbums
+      : loadMoreTracks;
+
+  // eslint-disable-next-line react-hooks/immutability
+  useLayoutEffect(() => {
+    if (!scrollBodyEl) return;
+
+    if (tabScrollSessionKeyRef.current !== tabScrollSessionKey) {
+      tabScrollSessionKeyRef.current = tabScrollSessionKey;
+      albumScrollSnapshotRef.current = {
+        scrollTop: 0,
+        displayCount: 0,
+      };
+      trackScrollSnapshotRef.current = {
+        scrollTop: 0,
+        displayCount: 0,
+      };
+      previousViewRef.current = view;
+      pendingTabScrollRestoreRef.current = null;
+      // eslint-disable-next-line react-hooks/immutability
+      scrollBodyEl.scrollTop = 0;
+    } else if (previousViewRef.current !== view) {
+      previousViewRef.current = view;
+      pendingTabScrollRestoreRef.current = view;
+    }
+
+    const snapshotRef =
+      view === 'albums'
+        ? albumScrollSnapshotRef
+        : trackScrollSnapshotRef;
+
+    const syncScrollTop = () => {
+      if (pendingTabScrollRestoreRef.current === view) return;
+      snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+    };
+
+    if (pendingTabScrollRestoreRef.current !== view) {
+      syncScrollTop();
+    }
+
+    scrollBodyEl.addEventListener('scroll', syncScrollTop, {
+      passive: true,
+    });
+
+    return () => {
+      scrollBodyEl.removeEventListener('scroll', syncScrollTop);
+    };
+  }, [
+    scrollBodyEl,
+    tabScrollSessionKey,
+    view,
+  ]);
+
+  useEffect(() => {
+    if (pendingTabScrollRestoreRef.current === view) return;
+    activeScrollSnapshotRef.current.displayCount = activeDisplayCount;
+  }, [
+    view,
+    activeDisplayCount,
+    activeScrollSnapshotRef,
+  ]);
+
+  // eslint-disable-next-line react-hooks/immutability
+  useLayoutEffect(() => {
+    if (
+      !scrollBodyEl ||
+      pendingTabScrollRestoreRef.current !== view ||
+      !activeSessionReady ||
+      activeLoading ||
+      activeLoadingMore
+    ) {
+      return;
+    }
+
+    const snapshot = activeScrollSnapshotRef.current;
+
+    if (
+      activeDisplayCount < snapshot.displayCount &&
+      activeHasMore
+    ) {
+      activeLoadMore();
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/immutability
+    scrollBodyEl.scrollTop = snapshot.scrollTop;
+    snapshot.scrollTop = scrollBodyEl.scrollTop;
+    pendingTabScrollRestoreRef.current = null;
+  }, [
+    view,
+    scrollBodyEl,
+    activeDisplayCount,
+    activeSessionReady,
+    activeLoading,
+    activeLoadingMore,
+    activeHasMore,
+    activeLoadMore,
+    activeScrollSnapshotRef,
+  ]);
 
   const { isScrollRestorePending } = useAlbumBrowseScrollRestore({
     serverId,
     genreName: genre,
     scrollBodyEl,
-    displayAlbumsLength: displayAlbums.length,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMore,
+    displayAlbumsLength: activeDisplayCount,
+    loading: activeLoading,
+    loadingMore: activeLoadingMore,
+    hasMore: activeHasMore,
+    loadMore: activeLoadMore,
   });
 
   useEffect(() => {
-    if (isScrollRestorePending || !readAlbumBrowseRestore(location.state)) return;
-    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
-  }, [isScrollRestorePending, location.pathname, location.search, location.hash, location.state, navigate]);
+    if (
+      isScrollRestorePending ||
+      !readAlbumBrowseRestore(location.state)
+    ) {
+      return;
+    }
+    navigate(
+      `${location.pathname}${location.search}${location.hash}`,
+      { replace: true, state: null },
+    );
+  }, [
+    view,
+    isScrollRestorePending,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    navigate,
+  ]);
 
   const [albumCount, setAlbumCount] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -127,13 +398,12 @@ export default function GenreDetail() {
     if (!genre || !serverId) return;
     const cached = lookupScopedGenreAlbumCount(browseScope, genre)
       ?? lookupGenreAlbumCount(serverId, genre, libraryScopeCacheKeyForServer(serverId));
-    // React Compiler set-state-in-effect rule: state set from a timer/animation callback.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAlbumCount(cached);
   }, [serverId, genre, musicLibraryFilterVersion, browseScope]);
 
   useEffect(() => {
-    if (!genre || loading || !hasMore) return;
+    if (!genre || albumsLoading || !albumsHasMore) return;
     const cached = lookupScopedGenreAlbumCount(browseScope, genre)
       ?? lookupGenreAlbumCount(serverId, genre, libraryScopeCacheKeyForServer(serverId));
     if (cached != null && !browseScope.multiServer) return;
@@ -147,7 +417,16 @@ export default function GenreDetail() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [serverId, genre, indexEnabled, sort, musicLibraryFilterVersion, browseScope, loading, hasMore]);
+  }, [
+    serverId,
+    genre,
+    indexEnabled,
+    sort,
+    musicLibraryFilterVersion,
+    browseScope,
+    albumsLoading,
+    albumsHasMore,
+  ]);
 
   const fetchGenreTracks = useCallback(
     (shuffle?: boolean) => fetchGenreTracksForPlayback(serverId, genre, {
@@ -158,15 +437,27 @@ export default function GenreDetail() {
   );
 
   const handlePlayAll = useCallback(
-    () => runBulkPlayAll({ fetchTracks: () => fetchGenreTracks(false), setLoading: setBulkLoading, playTrack }),
+    () => runBulkPlayAll({
+      fetchTracks: () => fetchGenreTracks(false),
+      setLoading: setBulkLoading,
+      playTrack,
+    }),
     [fetchGenreTracks, playTrack],
   );
   const handleShuffleAll = useCallback(
-    () => runBulkShuffle({ fetchTracks: () => fetchGenreTracks(true), setLoading: setBulkLoading, playTrack }),
+    () => runBulkShuffle({
+      fetchTracks: () => fetchGenreTracks(true),
+      setLoading: setBulkLoading,
+      playTrack,
+    }),
     [fetchGenreTracks, playTrack],
   );
   const handleEnqueueAll = useCallback(
-    () => runBulkEnqueue({ fetchTracks: () => fetchGenreTracks(false), setLoading: setBulkLoading, enqueue }),
+    () => runBulkEnqueue({
+      fetchTracks: () => fetchGenreTracks(false),
+      setLoading: setBulkLoading,
+      enqueue,
+    }),
     [fetchGenreTracks, enqueue],
   );
 
@@ -179,17 +470,93 @@ export default function GenreDetail() {
     navigate(readAlbumDetailReturnTo(location.state) ?? '/genres');
   }, [navigate, location.state]);
 
-  const mainstageHeaderTight = useMainstageInpageHeaderTight(scrollBodyEl, [genre, albumCount, bulkLoading]);
+  const selectView = useCallback(
+    (next: GenreDetailView) => {
+      const snapshotRef =
+        view === 'albums'
+          ? albumScrollSnapshotRef
+          : trackScrollSnapshotRef;
+      snapshotRef.current.displayCount = activeDisplayCount;
+      if (scrollBodyEl) {
+        snapshotRef.current.scrollTop = scrollBodyEl.scrollTop;
+      }
 
-  const headerCount = useMemo(() => {
+      const params = new URLSearchParams(location.search);
+      if (next === 'tracks') {
+        params.set('view', 'tracks');
+      } else {
+        params.delete('view');
+      }
+
+      const search = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: search ? `?${search}` : '',
+          hash: location.hash,
+        },
+        {
+          replace: true,
+          state: location.state,
+        },
+      );
+    },
+    [
+      view,
+      activeDisplayCount,
+      scrollBodyEl,
+      location.pathname,
+      location.search,
+      location.hash,
+      location.state,
+      navigate,
+    ],
+  );
+
+  const onTabsKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const next = view === 'albums' ? 'tracks' : 'albums';
+      selectView(next);
+      window.setTimeout(() => {
+        document.getElementById(`genre-detail-tab-${next}`)?.focus();
+      }, 0);
+    },
+    [selectView, view],
+  );
+
+  const resolvedAlbumCount = useMemo(() => {
     return resolveGenreHeaderCount({
-      loading,
-      hasMore,
+      loading: albumsLoading,
+      hasMore: albumsHasMore,
       loadedAlbumCount: albums.length,
       albumCount,
     });
-  }, [loading, hasMore, albums.length, albumCount]);
-  const showPlayback = !loading && (displayAlbums.length > 0 || (albumCount ?? 0) > 0);
+  }, [
+    albumsLoading,
+    albumsHasMore,
+    albums.length,
+    albumCount,
+  ]);
+  const resolvedTrackCount =
+    trackCount ??
+    (!tracksLoading && !tracksHasMore && view === 'tracks'
+      ? songs.length
+      : null);
+  const showPlayback =
+    !activeLoading &&
+    (
+      displayAlbums.length > 0 ||
+      songs.length > 0 ||
+      (albumCount ?? 0) > 0 ||
+      (trackCount ?? 0) > 0
+    );
+
+  const mainstageHeaderTight = useMainstageInpageHeaderTight(
+    scrollBodyEl,
+    [genre, resolvedAlbumCount, resolvedTrackCount, bulkLoading, view],
+  );
 
   return (
     <div className={`content-body animate-fade-in mainstage-inpage-split${mainstageHeaderTight ? ' mainstage-inpage--header-tight' : ''}`}>
@@ -205,15 +572,55 @@ export default function GenreDetail() {
             <ArrowLeft size={16} />
             <span className="toolbar-btn-label">{t('genres.back')}</span>
           </button>
+
           <div className="psy-page-heading psy-page-heading--fill">
             <h1 className="page-title truncate" title={genre}>{genre}</h1>
-            {headerCount != null && headerCount > 0 && (
+            {(resolvedAlbumCount != null || resolvedTrackCount != null) && (
               <span className="psy-page-heading__count">
                 <span aria-hidden="true">–</span>
-                {t('genres.albumCount', { count: headerCount })}
+                {resolvedAlbumCount != null &&
+                  t('genres.albumCount', { count: resolvedAlbumCount })}
+                {resolvedAlbumCount != null && resolvedTrackCount != null && (
+                  <span aria-hidden="true"> • </span>
+                )}
+                {resolvedTrackCount != null &&
+                  t('tracks.count', { count: resolvedTrackCount })}
               </span>
             )}
           </div>
+
+          <div
+            className="artist-tracks-tabs"
+            role="tablist"
+            aria-label={t('genres.viewTabsLabel')}
+            onKeyDown={onTabsKeyDown}
+          >
+            <button
+              type="button"
+              role="tab"
+              id="genre-detail-tab-albums"
+              aria-selected={view === 'albums'}
+              aria-controls="genre-detail-panel"
+              tabIndex={view === 'albums' ? 0 : -1}
+              className={`btn ${view === 'albums' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              onClick={() => selectView('albums')}
+            >
+              {t('common.albums')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="genre-detail-tab-tracks"
+              aria-selected={view === 'tracks'}
+              aria-controls="genre-detail-panel"
+              tabIndex={view === 'tracks' ? 0 : -1}
+              className={`btn ${view === 'tracks' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              onClick={() => selectView('tracks')}
+            >
+              {t('tracks.title')}
+            </button>
+          </div>
+
           {showPlayback && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
               <button
@@ -230,9 +637,6 @@ export default function GenreDetail() {
                   <span className="toolbar-btn-label">{t('common.play')}</span>
                 </span>
               </button>
-              {/* Stretch instead of a fixed height: this button holds only an
-                  icon, so its content box is shorter than the play button's
-                  text line and it would otherwise sit smaller beside it. */}
               <button
                 className="btn btn-surface"
                 style={{ alignSelf: 'stretch' }}
@@ -255,63 +659,113 @@ export default function GenreDetail() {
         viewportRef={bindGenreDetailScrollBody}
         railInset="panel"
         measureDeps={[
-          loading,
-          displayAlbums.length,
-          hasMore,
+          activeLoading,
+          activeDisplayCount,
+          activeHasMore,
           genre,
+          view,
           perfFlags.disableMainstageVirtualLists,
         ]}
       >
-        {loading && albums.length === 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-            <div className="spinner" />
-          </div>
-        ) : !loading && displayAlbums.length === 0 ? (
-          <p className="loading-text" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
-            {t('genres.albumsEmpty')}
-          </p>
-        ) : (
-          <div style={{ position: 'relative' }}>
-            <div style={{ visibility: isScrollRestorePending ? 'hidden' : 'visible' }}>
-              <VirtualCardGrid
-                items={displayAlbums}
-                itemKey={(a, _i) => a.id}
-                rowVariant="album"
-                disableVirtualization={perfFlags.disableMainstageVirtualLists}
-                layoutSignal={displayAlbums.length}
-                scrollRootId={GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID}
-                warmGridCovers={albumGridWarmCovers()}
-                renderItem={album => (
-                  <AlbumCard
-                    album={album}
-                    observeScrollRootId={GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID}
-                  />
-                )}
-              />
-              {hasMore && (
-                <InpageScrollSentinel
-                  bindSentinel={bindLoadMoreSentinel}
-                  loading={loadingMore}
-                  itemCount={displayAlbums.length}
-                />
-              )}
-            </div>
-            {isScrollRestorePending && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  justifyContent: 'center',
-                  paddingTop: '3rem',
-                  background: 'var(--bg-app)',
-                }}
-              >
+        <div
+          id="genre-detail-panel"
+          role="tabpanel"
+          aria-labelledby={`genre-detail-tab-${view}`}
+        >
+          {view === 'albums' ? (
+            albumsLoading && albums.length === 0 ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
                 <div className="spinner" />
               </div>
-            )}
-          </div>
-        )}
+            ) : !albumsLoading && displayAlbums.length === 0 ? (
+              <p className="loading-text" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                {t('genres.albumsEmpty')}
+              </p>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <div style={{ visibility: isScrollRestorePending ? 'hidden' : 'visible' }}>
+                  <VirtualCardGrid
+                    items={displayAlbums}
+                    itemKey={(album, _index) => album.id}
+                    rowVariant="album"
+                    disableVirtualization={perfFlags.disableMainstageVirtualLists}
+                    layoutSignal={displayAlbums.length}
+                    scrollRootId={GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID}
+                    warmGridCovers={albumGridWarmCovers()}
+                    renderItem={album => (
+                      <AlbumCard
+                        album={album}
+                        observeScrollRootId={GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID}
+                      />
+                    )}
+                  />
+                  {albumsHasMore && (
+                    <InpageScrollSentinel
+                      bindSentinel={bindLoadMoreSentinel}
+                      loading={albumsLoadingMore}
+                      itemCount={displayAlbums.length}
+                    />
+                  )}
+                </div>
+                {isScrollRestorePending && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      justifyContent: 'center',
+                      paddingTop: '3rem',
+                      background: 'var(--bg-app)',
+                    }}
+                  >
+                    <div className="spinner" />
+                  </div>
+                )}
+              </div>
+            )
+          ) : tracksLoading && songs.length === 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <div className="spinner" />
+            </div>
+          ) : !tracksLoading && songs.length === 0 ? (
+            <p className="loading-text" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+              {t('genres.tracksEmpty')}
+            </p>
+          ) : (
+            <div style={{ position: 'relative' }}>
+              <div style={{ visibility: isScrollRestorePending ? 'hidden' : 'visible' }}>
+                <PagedSongList
+                  songs={songs}
+                  hasMore={false}
+                  loadingMore={false}
+                  onLoadMore={loadMoreTracks}
+                />
+                {tracksHasMore && (
+                  <InpageScrollSentinel
+                    bindSentinel={bindTrackLoadMoreSentinel}
+                    loading={tracksLoadingMore}
+                    itemCount={songs.length}
+                    style={{ padding: '1rem', height: 'auto', margin: 0 }}
+                  />
+                )}
+              </div>
+              {isScrollRestorePending && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    paddingTop: '3rem',
+                    background: 'var(--bg-app)',
+                  }}
+                >
+                  <div className="spinner" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </OverlayScrollArea>
     </div>
   );

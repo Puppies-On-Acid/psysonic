@@ -1,43 +1,69 @@
-import { useEffect, useRef, type RefObject } from 'react';
-import { useLocation, useNavigationType } from 'react-router';
-import { GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID, readInpageScrollTop } from '@/constants/appScroll';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type RefObject,
+} from 'react';
+import {
+  useLocation,
+  useNavigationType,
+} from 'react-router';
+
+import {
+  GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID,
+  readInpageScrollTop,
+} from '@/constants/appScroll';
 import {
   DEFAULT_ALBUM_BROWSE_RETURN_FILTERS,
   albumBrowseSortForServer,
   clearGenreDetailReturnStash,
+  clearGenreDetailTabScrollSnapshots,
   genreDetailGenreFromPath,
   isAlbumDetailPath,
+  isArtistDetailPath,
   isGenreDetailPath,
   peekGenreDetailScrollRestore,
+  peekGenreDetailTabScrollSnapshots,
   stashGenreDetailReturnFilters,
+  stashGenreDetailTabScrollSnapshots,
   useAlbumBrowseSessionStore,
+  type AlbumBrowseScrollSnapshot,
 } from '@/features/album';
-import { shouldRestoreAlbumBrowseSession } from '@/lib/navigation/albumDetailNavigation';
-import type { AlbumBrowseScrollSnapshot } from '@/features/album';
+import {
+  shouldRestoreAlbumBrowseSession,
+} from '@/lib/navigation/albumDetailNavigation';
 
-/** Genre detail: locked genre filter + leave/restore session (same contract as All Albums). */
+/** Genre detail: locked genre filter + per-tab leave/restore session. */
 export function useGenreDetailBrowse(
   serverId: string,
   genreName: string,
   scrollSnapshotRef?: RefObject<AlbumBrowseScrollSnapshot>,
+  albumScrollSnapshotRef?: RefObject<AlbumBrowseScrollSnapshot>,
+  trackScrollSnapshotRef?: RefObject<AlbumBrowseScrollSnapshot>,
 ) {
   const navigationType = useNavigationType();
   const location = useLocation();
-  const sort = useAlbumBrowseSessionStore(s => albumBrowseSortForServer(s.sortByServer, serverId));
+  const sort = useAlbumBrowseSessionStore(state =>
+    albumBrowseSortForServer(state.sortByServer, serverId),
+  );
   const restoredFromStashRef = useRef(false);
-  const restoreKeyRef = useRef('');
-  const restoreDisplayCountRef = useRef<number | undefined>(undefined);
-  const restoreKey = `${serverId}:${genreName}`;
-  // React Compiler refs rule: ref read imperatively outside reactive rendering; not used to compute the render output.
-  // eslint-disable-next-line react-hooks/refs
-  if (restoreKeyRef.current !== restoreKey) {
-    // React Compiler refs rule: ref kept in sync with the latest value for use in effects/handlers/cleanup; not render data.
-    // eslint-disable-next-line react-hooks/refs
-    restoreKeyRef.current = restoreKey;
-    // React Compiler refs rule: ref kept in sync with the latest value for use in effects/handlers/cleanup; not render data.
-    // eslint-disable-next-line react-hooks/refs
-    restoreDisplayCountRef.current = peekGenreDetailScrollRestore(serverId, genreName)?.displayCount;
-  }
+
+  const restoreTabScrollSnapshots = useMemo(
+    () => peekGenreDetailTabScrollSnapshots(serverId, genreName),
+    [serverId, genreName],
+  );
+
+  const restoreSnapshot = useMemo(
+    () => ({
+      displayCount:
+        peekGenreDetailScrollRestore(serverId, genreName)?.displayCount,
+      view:
+        new URLSearchParams(location.search).get('view') === 'tracks'
+          ? 'tracks' as const
+          : 'albums' as const,
+    }),
+    [serverId, genreName, location.search],
+  );
 
   useEffect(() => {
     restoredFromStashRef.current = false;
@@ -46,7 +72,12 @@ export function useGenreDetailBrowse(
   useEffect(() => {
     if (!serverId || !genreName) return;
 
-    if (shouldRestoreAlbumBrowseSession(navigationType, location.state)) {
+    if (
+      shouldRestoreAlbumBrowseSession(
+        navigationType,
+        location.state,
+      )
+    ) {
       restoredFromStashRef.current = true;
       return;
     }
@@ -54,37 +85,98 @@ export function useGenreDetailBrowse(
     if (restoredFromStashRef.current) return;
 
     clearGenreDetailReturnStash(serverId, genreName);
-  }, [serverId, genreName, navigationType, location.state]);
+    clearGenreDetailTabScrollSnapshots(serverId, genreName);
+  }, [
+    serverId,
+    genreName,
+    navigationType,
+    location.state,
+  ]);
 
   useEffect(() => {
+    const snapshot = scrollSnapshotRef?.current;
+    const albumSnapshot = albumScrollSnapshotRef?.current;
+    const trackSnapshot = trackScrollSnapshotRef?.current;
+
     return () => {
       if (!serverId || !genreName) return;
+
       const path = window.location.pathname;
-      if (isAlbumDetailPath(path)) {
-        // Read at cleanup time on purpose: we want the scroll snapshot as it is
-        // at navigation-away. Copying it at effect setup would stash a stale value.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        const snapshot = scrollSnapshotRef?.current;
+
+      if (
+        isAlbumDetailPath(path) ||
+        isArtistDetailPath(path)
+      ) {
         const scrollTop = Math.max(
-          readInpageScrollTop(GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID),
+          readInpageScrollTop(
+            GENRE_DETAIL_INPAGE_SCROLL_VIEWPORT_ID,
+          ),
           snapshot?.scrollTop ?? 0,
         );
-        stashGenreDetailReturnFilters(serverId, genreName, {
-          ...DEFAULT_ALBUM_BROWSE_RETURN_FILTERS,
-          selectedGenres: [genreName],
-          scrollTop,
-          displayCount: snapshot?.displayCount,
-        });
-      } else if (!isGenreDetailPath(path) || genreDetailGenreFromPath(path) !== genreName) {
+        const activeView =
+          new URLSearchParams(location.search).get('view') === 'tracks'
+            ? 'tracks'
+            : 'albums';
+        const activeDisplayCount = snapshot?.displayCount ?? 0;
+
+        stashGenreDetailTabScrollSnapshots(
+          serverId,
+          genreName,
+          {
+            albums: {
+              scrollTop:
+                activeView === 'albums'
+                  ? scrollTop
+                  : albumSnapshot?.scrollTop ?? 0,
+              displayCount:
+                activeView === 'albums'
+                  ? activeDisplayCount
+                  : albumSnapshot?.displayCount ?? 0,
+            },
+            tracks: {
+              scrollTop:
+                activeView === 'tracks'
+                  ? scrollTop
+                  : trackSnapshot?.scrollTop ?? 0,
+              displayCount:
+                activeView === 'tracks'
+                  ? activeDisplayCount
+                  : trackSnapshot?.displayCount ?? 0,
+            },
+          },
+        );
+
+        stashGenreDetailReturnFilters(
+          serverId,
+          genreName,
+          {
+            ...DEFAULT_ALBUM_BROWSE_RETURN_FILTERS,
+            selectedGenres: [genreName],
+            scrollTop,
+            displayCount: activeDisplayCount,
+          },
+        );
+      } else if (
+        !isGenreDetailPath(path) ||
+        genreDetailGenreFromPath(path) !== genreName
+      ) {
         clearGenreDetailReturnStash(serverId, genreName);
+        clearGenreDetailTabScrollSnapshots(serverId, genreName);
       }
     };
-  }, [serverId, genreName, scrollSnapshotRef]);
+  }, [
+    serverId,
+    genreName,
+    location.search,
+    scrollSnapshotRef,
+    albumScrollSnapshotRef,
+    trackScrollSnapshotRef,
+  ]);
 
   return {
     sort,
-    // React Compiler refs rule: ref read imperatively outside reactive rendering; not used to compute the render output.
-    // eslint-disable-next-line react-hooks/refs
-    restoreDisplayCount: restoreDisplayCountRef.current,
+    restoreDisplayCount: restoreSnapshot.displayCount,
+    restoreView: restoreSnapshot.view,
+    restoreTabScrollSnapshots,
   };
 }
