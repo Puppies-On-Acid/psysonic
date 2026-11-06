@@ -34,7 +34,11 @@ const songs = [
 function renderList() {
   const { result } = renderHook(() => useTracklistColumns(ARTIST_ALL_TRACKS_COLUMNS, ARTIST_ALL_TRACKS_STORAGE_KEY));
   return renderWithProviders(
-    <ArtistAllTracksList songs={songs} loading={false} failed={false} onPlay={vi.fn()} columns={result.current} />,
+    <ArtistAllTracksList
+      songs={songs} loading={false} failed={false} onPlay={vi.fn()} columns={result.current}
+      playlistMembershipFallbackServerId="server-1"
+      playlistMembershipHydrationEnabled={false}
+    />,
   );
 }
 
