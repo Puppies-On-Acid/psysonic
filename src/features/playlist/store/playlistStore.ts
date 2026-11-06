@@ -21,9 +21,14 @@ interface PlaylistStore {
   touchPlaylist: (id: string, serverId?: string) => void;
   removeId: (id: string, serverId?: string) => void;
   fetchPlaylists: () => Promise<void>;
-  fetchPlaylistsForServer: (serverId: string, isCurrent?: () => boolean) => Promise<void>;
+  fetchPlaylistsForServer: (serverId: string, isCurrent?: () => boolean) => Promise<boolean>;
   createPlaylist: (name: string, songIds: string[] | undefined, serverId: string) => Promise<SubsonicPlaylist | null>;
   addPlaylist: (playlist: SubsonicPlaylist) => void;
+  patchPlaylistMetadata: (
+    id: string,
+    serverId: string,
+    patch: Partial<Pick<SubsonicPlaylist, 'name' | 'comment' | 'public' | 'coverArt'>>,
+  ) => void;
 }
 
 let playlistFetchGeneration = 0;
@@ -107,15 +112,38 @@ export const usePlaylistStore = create<PlaylistStore>()(
         const mutationGeneration = playlistMutationGeneration;
         try {
           const playlists = await getPlaylistsForServer(serverId);
-          if ((isCurrent && !isCurrent()) || mutationGeneration !== playlistMutationGeneration) return;
+          if ((isCurrent && !isCurrent()) || mutationGeneration !== playlistMutationGeneration) {
+            return false;
+          }
+
+          const previousOwned = usePlaylistStore
+            .getState()
+            .playlists
+            .filter(playlist => playlist.serverId === serverId);
+          const nextById = new Map(playlists.map(playlist => [playlist.id, playlist]));
+          const membership = usePlaylistMembershipStore.getState();
+
+          for (const previous of previousOwned) {
+            const next = nextById.get(previous.id);
+            if (
+              !next
+              || next.changed !== previous.changed
+              || next.songCount !== previous.songCount
+            ) {
+              membership.invalidatePlaylistSongIds(previous.id, serverId);
+            }
+          }
+
           set((state) => ({
             playlists: [
               ...state.playlists.filter(playlist => playlist.serverId !== serverId),
               ...playlists,
             ],
           }));
+          return true;
         } catch {
           // Keep the existing aggregate list when an owner-specific refresh fails.
+          return false;
         }
       },
       createPlaylist: async (name: string, songIds: string[] | undefined, serverId: string) => {
@@ -138,6 +166,16 @@ export const usePlaylistStore = create<PlaylistStore>()(
         playlistMutationGeneration += 1;
         set((s) => ({
           playlists: [...s.playlists, playlist],
+        }));
+      },
+      patchPlaylistMetadata: (id, serverId, patch) => {
+        playlistMutationGeneration += 1;
+        set((s) => ({
+          playlists: s.playlists.map(playlist => (
+            playlist.id === id && playlist.serverId === serverId
+              ? { ...playlist, ...patch }
+              : playlist
+          )),
         }));
       },
     }),

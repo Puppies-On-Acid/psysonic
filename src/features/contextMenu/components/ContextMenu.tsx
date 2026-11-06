@@ -32,6 +32,7 @@ function contextMenuSurfaceForType(type: string | null): OfflineSurface {
     case 'multi-artist':
       return 'contextMenuArtist';
     case 'playlist':
+    case 'playlist-membership':
     case 'multi-playlist':
     case 'playlist-tag':
       return 'contextMenuPlaylist';

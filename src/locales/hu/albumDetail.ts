@@ -39,6 +39,7 @@ export const albumDetail = {
   trackActions: 'Műveletek',
   trackGenres: 'Műfajok',
   trackMood: 'Hangulat',
+  trackPlaylists: 'Lejátszási listák',
   trackPlayCount: 'Lejátszások',
   trackLastPlayed: 'Utoljára játszva',
   trackBpm: 'BPM',

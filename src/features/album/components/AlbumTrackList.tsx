@@ -23,6 +23,8 @@ import { offlineActionPolicy, type OfflineActionPolicy } from '@/features/offlin
 import { songToTrack } from '@/lib/media/songToTrack';
 import { ownedEntityKey, ownedOverrideValue } from '@/lib/util/ownedEntityKey';
 import { useShowStarRatings, withoutRatingColumn } from '@/store/starRatings';
+import { playlistMembershipsForTrack } from '@/store/playlistMembershipIndex';
+import { usePlaylistMembershipHydration } from '@/features/playlist';
 
 export type { SortKey } from '@/features/album/utils/albumTrackListHelpers';
 
@@ -47,6 +49,8 @@ interface AlbumTrackListProps {
   sortDir?: 'asc' | 'desc';
   onSort?: (key: SortKey) => void;
   actionPolicy?: OfflineActionPolicy;
+  playlistMembershipServerId?: string;
+  playlistMembershipHydrationEnabled?: boolean;
 }
 
 // ── AlbumTrackList ────────────────────────────────────────────────────────────
@@ -70,6 +74,8 @@ export default function AlbumTrackList({
   sortDir,
   onSort,
   actionPolicy,
+  playlistMembershipServerId,
+  playlistMembershipHydrationEnabled = false,
 }: AlbumTrackListProps) {
   const policy = actionPolicy ?? offlineActionPolicy('trackRow', false);
   const { t } = useTranslation();
@@ -102,6 +108,16 @@ export default function AlbumTrackList({
     startResize, toggleColumn, resetColumns,
     pickerOpen, setPickerOpen, pickerRef, tracklistRef,
   } = useTracklistColumns(albumColumns, 'psysonic_tracklist_columns');
+
+  const playlistMembershipActive = (
+    !isMobile
+    && playlistMembershipHydrationEnabled
+    && colVisible.has('playlists')
+  );
+  const playlistMembershipView = usePlaylistMembershipHydration({
+    serverId: playlistMembershipServerId,
+    enabled: playlistMembershipActive,
+  });
 
   const {
     inSelectMode, allSelected, onToggleSelect, onDragStart, toggleAll,
@@ -278,6 +294,20 @@ export default function AlbumTrackList({
           {discs.get(discNum)!.map(song => {
             const globalIdx = songs.indexOf(song);
             const songKey = ownedEntityKey(song);
+            const membershipServerId = song.serverId ?? playlistMembershipServerId;
+            const membershipOwnerMatches = (
+              !!membershipServerId
+              && membershipServerId === playlistMembershipServerId
+            );
+            const trackPlaylistMemberships = membershipOwnerMatches
+              ? playlistMembershipsForTrack(
+                playlistMembershipView.index,
+                { id: song.id, serverId: membershipServerId },
+              )
+              : [];
+            const trackPlaylistMembershipTruthState = membershipOwnerMatches
+              ? playlistMembershipView.truthState
+              : 'unknown';
             return (
               <TrackRow
                 key={songKey}
@@ -303,6 +333,8 @@ export default function AlbumTrackList({
                 cursorRowId={songKey === cursorKey ? cursor.cursorRowId : undefined}
                 onCursorClick={handleCursorClick}
                 onSelectionStart={handleSelectionStart}
+                playlistMemberships={trackPlaylistMemberships}
+                playlistMembershipTruthState={trackPlaylistMembershipTruthState}
               />
             );
           })}

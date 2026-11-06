@@ -20,12 +20,23 @@ import i18n from '@/lib/i18n';
 import { offlineActionPolicy, type OfflineActionPolicy } from '@/features/offline';
 import { resolveTrackArtistRefs } from '@/features/playback/utils/playback/trackArtistRefs';
 import { buildArtistDetailPath } from '@/lib/navigation/detailServerScope';
+import { TrackPlaylistMembershipCell } from '@/features/playlist';
 import { ResolvedArtistRefInline } from '@/ui/ResolvedArtistRefInline';
 import { ownedEntityKey } from '@/lib/util/ownedEntityKey';
-import { sameQueueTrack, useTrackPlayStats } from '@/features/playback';
+import type {
+  TrackPlaylistMembershipTruthState,
+  TrackPlaylistRef,
+} from '@/store/playlistMembershipIndex';
+import {
+  sameQueueTrack,
+  usePlayerStore,
+  useTrackPlayStats,
+} from '@/features/playback';
 import { useDragPress } from '@/lib/dnd/useDragPress';
 import { TracklistCell } from '@/ui/tracklist/TracklistCell';
 import { songCellText } from '@/ui/tracklist/measureColumnContent';
+
+const TRACK_ROW_INTERACTIVE_SELECTOR = 'button, a, input, select, textarea';
 
 type ContextMenuFn = (
   x: number,
@@ -60,6 +71,8 @@ interface TrackRowProps {
   onCursorClick?: (song: SubsonicSong, e: React.MouseEvent) => void;
   /** A Ctrl/Cmd click on this row is about to start a multi-selection. */
   onSelectionStart?: (song: SubsonicSong) => void;
+  playlistMemberships?: readonly TrackPlaylistRef[];
+  playlistMembershipTruthState?: TrackPlaylistMembershipTruthState;
 }
 
 /**
@@ -120,6 +133,8 @@ export const TrackRow = React.memo(function TrackRow({
   cursorRowId,
   onCursorClick,
   onSelectionStart,
+  playlistMemberships = [],
+  playlistMembershipTruthState = 'unknown',
 }: TrackRowProps) {
   const policy = actionPolicy ?? offlineActionPolicy('trackRow', false);
   const { t } = useTranslation();
@@ -131,8 +146,11 @@ export const TrackRow = React.memo(function TrackRow({
   const isPreviewing = usePreviewStore(s => sameQueueTrack(s.previewingTrack, song));
   const isPreviewAudioStarted = usePreviewStore(s => sameQueueTrack(s.previewingTrack, song) && s.audioStarted);
   const playStats = useTrackPlayStats(song);
+  const openGlobalContextMenu = usePlayerStore(state => state.openContextMenu);
 
   const onRowMouseDown = useDragPress({
+    canStart: event =>
+      !(event.target as HTMLElement).closest(TRACK_ROW_INTERACTIVE_SELECTOR),
     onStart: (me) => onDragStart(song, me),
   });
 
@@ -247,6 +265,22 @@ export const TrackRow = React.memo(function TrackRow({
             {moodsLabel(song) || '—'}
           </div>
         );
+      case 'playlists':
+        return (
+          <TrackPlaylistMembershipCell
+            key="playlists"
+            memberships={playlistMemberships}
+            truthState={playlistMembershipTruthState}
+            onPlaylistContextMenu={(event, playlist) => {
+              openGlobalContextMenu(
+                event.clientX,
+                event.clientY,
+                { ...playlist, songId: song.id },
+                'playlist-membership',
+              );
+            }}
+          />
+        );
       case 'playCount':
         return (
           <div key="playCount" className="track-duration">
@@ -276,7 +310,7 @@ export const TrackRow = React.memo(function TrackRow({
       className={`track-row track-row-va track-row-with-actions${isActive ? ' active' : ''}${isContextMenuSong ? ' context-active' : ''}${isSelected ? ' bulk-selected' : ''}${cursorRowId ? ' track-row--cursor' : ''}`}
       style={gridStyle}
       onClick={e => {
-        if ((e.target as HTMLElement).closest('button, a, input')) return;
+        if ((e.target as HTMLElement).closest(TRACK_ROW_INTERACTIVE_SELECTOR)) return;
         if (e.ctrlKey || e.metaKey) {
           if (!inSelectMode) onSelectionStart?.(song);
           onToggleSelect(songKey, globalIdx, false);
@@ -290,12 +324,13 @@ export const TrackRow = React.memo(function TrackRow({
         }
       }}
       onDoubleClick={onDoubleClickSong || doubleClickToPlay ? e => {
-        if ((e.target as HTMLElement).closest('button, a, input')) return;
+        if ((e.target as HTMLElement).closest(TRACK_ROW_INTERACTIVE_SELECTOR)) return;
         if (e.ctrlKey || e.metaKey || inSelectMode) return;
         if (onDoubleClickSong) onDoubleClickSong(song);
         else onPlaySong(song);
       } : undefined}
       onContextMenu={e => {
+        if ((e.target as HTMLElement).closest(TRACK_ROW_INTERACTIVE_SELECTOR)) return;
         e.preventDefault();
         setContextMenuSongKey(songKey);
         onContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
