@@ -126,14 +126,6 @@
 
 
 
-.song-list-row--selectable {
-  grid-template-columns: 86px minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 110px 72px;
-}
-
-.song-list-row--selectable.song-list-row--with-bpm {
-  grid-template-columns: 86px minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 110px 48px 72px;
-}
-
 .song-list-row.bulk-selected {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }

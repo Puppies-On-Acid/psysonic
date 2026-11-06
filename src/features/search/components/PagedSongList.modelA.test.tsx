@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { makeSubsonicSong } from '@/test/helpers/factories';
 
@@ -57,5 +57,42 @@ describe('PagedSongList — spreadsheet model', () => {
     expect(titleCell).toHaveAttribute('data-tl-text', 'Second song');
     expect(titleCell.querySelector('[title]')).toBeNull();
     expect(titleCell).not.toHaveAttribute('title');
+  });
+
+  it('keeps selection controls aligned with movable spreadsheet columns', () => {
+    const onToggle = vi.fn();
+    const { container } = renderWithProviders(
+      <PagedSongList
+        songs={songs} hasMore={false} loadingMore={false} onLoadMore={() => {}}
+        selection={{
+          isSelected: song => song.id === 'song-1',
+          onToggle,
+          label: song => `Select ${song.title}`,
+        }}
+      />,
+    );
+    const row = container.querySelector<HTMLElement>('.tl-body .song-list-row')!;
+    expect([...row.children].map(c => c.getAttribute('data-tl-col'))).toEqual(headKeys(container));
+    expect(row.style.gridTemplateColumns).toBe(container.querySelector<HTMLElement>('.tl-header')!.style.gridTemplateColumns);
+    expect(parseInt(row.style.gridTemplateColumns, 10)).toBeGreaterThanOrEqual(88);
+    const checkbox = screen.getByRole('button', { name: 'Select First song' });
+    expect(checkbox).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(checkbox, { shiftKey: true });
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith(songs[0], 0, true);
+  });
+
+  it('uses modifier clicks for selection without starting playback', async () => {
+    const { enqueueAndPlay } = await import('@/features/playback/utils/playback/playSong');
+    vi.mocked(enqueueAndPlay).mockClear();
+    const onToggle = vi.fn();
+    renderWithProviders(
+      <PagedSongList
+        songs={songs} hasMore={false} loadingMore={false} onLoadMore={() => {}}
+        selection={{ isSelected: () => false, onToggle, label: song => `Select ${song.title}` }}
+      />,
+    );
+    fireEvent.click(screen.getByText('Second song'), { ctrlKey: true });
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith(songs[1], 1, false);
+    expect(enqueueAndPlay).not.toHaveBeenCalled();
   });
 });
