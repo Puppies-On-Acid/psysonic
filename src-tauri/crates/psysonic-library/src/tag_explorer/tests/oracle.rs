@@ -1007,9 +1007,9 @@ fn baseline_album_order_is_album_artist_album_id_nocase() {
 
 #[test]
 fn baseline_exact_scope_album_dedup_depends_on_cluster_key_state() {
-    // KNOWN BASELINE QUIRK: single exact-library browsing does not eagerly
-    // ensure cluster keys. Identity maintenance can subsequently merge
-    // equivalent physical albums; this test is not a request to change it.
+    // Single exact-library browsing does not eagerly ensure cluster keys.
+    // Once maintenance builds canonical keys, two physical copies with the
+    // same *performing* album artist can merge. Preserve this baseline.
     let mut first = sample(
         "s1",
         Some("lib-a"),
@@ -1030,6 +1030,8 @@ fn baseline_exact_scope_album_dedup_depends_on_cluster_key_state() {
     );
     first.album = "Alpha".into();
     second.album = "alpha".into();
+    first.artist = Some("Aaron".into());
+    second.artist = Some("Aaron".into());
     first.album_artist = Some("Aaron".into());
     second.album_artist = Some("Aaron".into());
 
@@ -1038,14 +1040,67 @@ fn baseline_exact_scope_album_dedup_depends_on_cluster_key_state() {
     req.library_scopes = Some(vec![scoped("s1", "lib-a")]);
 
     let cold = list_albums(&store, &req).unwrap();
-    assert_eq!(cold.total, Some(2), "cold exact scope keeps physical albums");
+    assert_eq!(
+        cold.total,
+        Some(2),
+        "cold exact scope keeps physical albums"
+    );
 
     crate::identity::ensure_cluster_keys_built(&store, "s1").unwrap();
 
     let warm = list_albums(&store, &req).unwrap();
-    assert_eq!(warm.total, Some(1), "warm keys merge equivalent physical albums");
+    assert_eq!(
+        warm.total,
+        Some(1),
+        "warm keys merge equivalent physical albums"
+    );
     assert_eq!(warm.albums.len(), 1);
     assert_eq!(warm.albums[0].song_count, Some(2));
+}
+
+#[test]
+fn baseline_nonperforming_album_credit_does_not_merge_physical_albums() {
+    // Under identity v11, an album-artist credit that is not represented by
+    // any performing track is insufficient evidence to collapse two physical
+    // albums, even after cluster keys have been rebuilt.
+    let mut first = sample(
+        "s1",
+        Some("lib-a"),
+        "credit-1",
+        "First",
+        "credit-a",
+        &["Rock"],
+        &["Dreamy"],
+    );
+    let mut second = sample(
+        "s1",
+        Some("lib-a"),
+        "credit-2",
+        "Second",
+        "credit-b",
+        &["Rock"],
+        &["Dreamy"],
+    );
+    first.album = "Alpha".into();
+    second.album = "alpha".into();
+    first.album_artist = Some("Aaron".into());
+    second.album_artist = Some("Aaron".into());
+    // The fixture's performing artist remains "Artist", not "Aaron".
+
+    let store = seed(&[first, second]);
+    let mut req = album_request(LibraryTagMatchMode::And);
+    req.library_scopes = Some(vec![scoped("s1", "lib-a")]);
+
+    let cold = list_albums(&store, &req).unwrap();
+    assert_eq!(cold.total, Some(2));
+
+    crate::identity::ensure_cluster_keys_built(&store, "s1").unwrap();
+
+    let warm = list_albums(&store, &req).unwrap();
+    assert_eq!(warm.total, Some(2));
+    assert_eq!(warm.albums.len(), 2);
+    assert!(warm.albums.iter().any(|album| album.id == "credit-a"));
+    assert!(warm.albums.iter().any(|album| album.id == "credit-b"));
 }
 
 #[test]
