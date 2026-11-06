@@ -17,7 +17,7 @@ vi.mock('@/features/playback/store/queueUndoHotkey', () => ({
   installQueueUndoHotkey: vi.fn(),
 }));
 
-vi.mock('./windowKind', () => ({
+vi.mock('@/lib/windowKind', () => ({
   getWindowKind: vi.fn(() => 'main'),
 }));
 
@@ -26,7 +26,7 @@ vi.mock('./tauriBridge/windowLifecycleBridge', () => ({
 }));
 
 import { invoke } from '@tauri-apps/api/core';
-import { getWindowKind } from './windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import {
   applyThemeAtStartup,
   installCrossWindowThemeSync,

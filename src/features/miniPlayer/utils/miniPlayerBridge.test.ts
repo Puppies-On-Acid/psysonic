@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  windowLabel: 'main' as string,
   listeners: new Map<string, (event: { payload: unknown }) => void>(),
   showMainWindow: vi.fn(async () => undefined),
   openSongInfo: vi.fn(),
@@ -9,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ label: 'main' }),
+  getCurrentWindow: () => ({ label: mocks.windowLabel }),
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -72,13 +73,29 @@ vi.mock('@/features/miniPlayer/utils/miniTrackInfo', () => ({
   toMini: vi.fn(),
 }));
 
+import { _resetWindowKindCacheForTest } from '@/lib/windowKind';
 import { initMiniPlayerBridgeOnMain } from './miniPlayerBridge';
+
+beforeEach(() => {
+  mocks.windowLabel = 'main';
+  _resetWindowKindCacheForTest();
+});
 
 describe('miniPlayerBridge main-window restore', () => {
   beforeEach(() => {
     mocks.listeners.clear();
     mocks.showMainWindow.mockReset().mockResolvedValue(undefined);
     mocks.openSongInfo.mockReset();
+  });
+
+  it('never registers main-window controls from a mini or unknown window', () => {
+    for (const label of ['mini', 'unexpected']) {
+      mocks.windowLabel = label;
+      _resetWindowKindCacheForTest();
+      const cleanup = initMiniPlayerBridgeOnMain();
+      expect(mocks.listeners.size).toBe(0);
+      cleanup();
+    }
   });
 
   it('uses the fenced native restore command for every mini-to-main action', async () => {
