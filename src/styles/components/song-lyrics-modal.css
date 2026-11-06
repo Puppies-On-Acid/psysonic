@@ -1,0 +1,114 @@
+/* Static, read-only lyrics dialog; independent of the playback lyrics pane. */
+.song-lyrics-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10010;
+}
+
+.song-lyrics-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10011;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  height: min(640px, 82dvh);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+}
+
+.song-lyrics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.song-lyrics-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.song-lyrics-close {
+  padding: 4px;
+  color: var(--text-muted);
+}
+
+.song-lyrics-track {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.song-lyrics-track-title {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.song-lyrics-track-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.song-lyrics-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 28px 28px;
+}
+
+.song-lyrics-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.song-lyrics-status {
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.song-lyrics-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.song-lyrics-source {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.song-lyrics-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}

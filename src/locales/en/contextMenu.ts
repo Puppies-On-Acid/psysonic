@@ -30,6 +30,7 @@ export const contextMenu = {
   selectedSongs: '{{count}} tracks selected',
   selectedArtists: '{{count}} artists selected',
   songInfo: 'Song Info',
+  viewLyrics: 'View Lyrics',
   shareLink: 'Share link',
   shareCopied: 'Share link copied to the clipboard.',
   shareCopyFailed: 'Could not copy to the clipboard.',
