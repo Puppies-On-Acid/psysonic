@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Резултати по настроение",
   tracksEmpty: "Няма намерени песни за това настроение.",
   back: 'Назад',
+  selectTags: 'Избор',
+  cancelSelection: 'Отказ',
+  clearSelection: 'Изчисти',
+  selectedTagCount_one: 'Избран е {{count}} етикет',
+  selectedTagCount_other: 'Избрани са {{count}} етикета',
+  selectionMinimum: 'Изберете поне два етикета, за да видите комбинирани резултати.',
+  viewResults: 'Преглед на резултатите',
+  genreTagLabel: 'Жанр',
+  moodTagLabel: 'Настроение',
 };

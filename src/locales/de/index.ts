@@ -14,6 +14,7 @@ import { randomLanding } from './randomLanding';
 import { randomAlbums } from './randomAlbums';
 import { genres } from './genres';
 import { moods } from './moods';
+import { tagExplorer } from './tagExplorer';
 import { labels } from './labels';
 import { randomMix } from './randomMix';
 import { luckyMix } from './luckyMix';
@@ -70,6 +71,7 @@ export const deTranslation = {
   randomAlbums,
   genres,
   moods,
+  tagExplorer,
   labels,
   randomMix,
   luckyMix,

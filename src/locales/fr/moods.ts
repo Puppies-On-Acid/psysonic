@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Résultats de l’ambiance",
   tracksEmpty: "Aucun titre trouvé pour cette ambiance.",
   back: 'Retour',
+  selectTags: 'Sélectionner',
+  cancelSelection: 'Annuler',
+  clearSelection: 'Effacer',
+  selectedTagCount_one: '{{count}} tag sélectionné',
+  selectedTagCount_other: '{{count}} tags sélectionnés',
+  selectionMinimum: 'Sélectionnez au moins deux tags pour afficher les résultats combinés.',
+  viewResults: 'Voir les résultats',
+  genreTagLabel: 'Genre',
+  moodTagLabel: 'Ambiance',
 };

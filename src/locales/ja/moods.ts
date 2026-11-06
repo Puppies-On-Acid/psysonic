@@ -19,4 +19,13 @@ export const moods = {
   viewTabsLabel: "ムードの結果",
   tracksEmpty: "このムードのトラックは見つかりませんでした。",
   back: '戻る',
+  selectTags: '選択',
+  cancelSelection: 'キャンセル',
+  clearSelection: 'クリア',
+  selectedTagCount_one: '{{count}} 個のタグを選択中',
+  selectedTagCount_other: '{{count}} 個のタグを選択中',
+  selectionMinimum: '組み合わせた結果を表示するには2つ以上のタグを選択してください。',
+  viewResults: '結果を表示',
+  genreTagLabel: 'ジャンル',
+  moodTagLabel: 'ムード',
 };

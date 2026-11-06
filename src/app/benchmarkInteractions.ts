@@ -4,6 +4,10 @@ import type {
   BenchmarkInteractionResult,
   BenchmarkInteractionStatus,
 } from '@/lib/perf/benchmark';
+import {
+  benchmarkTagExplorerReady,
+  tagExplorerBenchmarkTarget,
+} from './benchmarkTagExplorerReady';
 
 const INTERACTION_TIMEOUT_MS = 30_000;
 const STABLE_WINDOW_MS = 700;
@@ -336,8 +340,11 @@ function sentinelItemCount(sentinel: HTMLElement | null): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-async function runPaginationInteraction(route: string): Promise<BenchmarkInteractionResult> {
-  return measureInteraction('pagination:scroll-next-page', 'pagination', async () => {
+async function runPaginationInteraction(
+  route: string,
+  name = 'pagination:scroll-next-page',
+): Promise<BenchmarkInteractionResult> {
+  return measureInteraction(name, 'pagination', async () => {
     const initialSentinel = document.querySelector<HTMLElement>('[data-benchmark-scroll-sentinel]');
     if (!initialSentinel) {
       return { status: 'skipped', details: { reason: 'no additional page available' } };
@@ -371,6 +378,259 @@ async function runPaginationInteraction(route: string): Promise<BenchmarkInterac
   });
 }
 
+const EXPLORER_ROOT = '[data-benchmark-tag-explorer-view]';
+const EXPLORER_ALBUMS = '[data-benchmark-tag-explorer-view-control="albums"]';
+const EXPLORER_TRACKS = '[data-benchmark-tag-explorer-view-control="tracks"]';
+const EXPLORER_OR = '[data-benchmark-tag-explorer-mode-control="or"]';
+const EXPLORER_AND = '[data-benchmark-tag-explorer-mode-control="and"]';
+
+type ExplorerBenchmarkView = 'albums' | 'tracks';
+type ExplorerBenchmarkMode = 'or' | 'and';
+
+function waitForTagExplorerBenchmarkState(
+  route: string,
+  view: ExplorerBenchmarkView,
+  mode: ExplorerBenchmarkMode,
+): Promise<boolean> {
+  const target = tagExplorerBenchmarkTarget(route, view, mode);
+  return waitForCondition(() => benchmarkTagExplorerReady(
+    target,
+    document.querySelector(EXPLORER_ROOT),
+    window.location,
+  ));
+}
+
+/**
+ * Each control derives navigation from React's current URL state. Never click
+ * the mode and view controls in the same tick: the second click can overwrite
+ * the first while the first navigation is still committing.
+ */
+export async function ensureTagExplorerBenchmarkState(
+  route: string,
+  view: ExplorerBenchmarkView,
+  mode: ExplorerBenchmarkMode,
+): Promise<boolean> {
+  const previousView = browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-view');
+  if (previousView !== 'albums' && previousView !== 'tracks') return false;
+
+  if (browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-mode') !== mode) {
+    if (!click(mode === 'or' ? EXPLORER_OR : EXPLORER_AND)) return false;
+    if (!await waitForTagExplorerBenchmarkState(route, previousView, mode)) return false;
+  }
+
+  if (browseState(EXPLORER_ROOT, 'data-benchmark-tag-explorer-view') !== view) {
+    if (!click(view === 'albums' ? EXPLORER_ALBUMS : EXPLORER_TRACKS)) return false;
+  }
+  return waitForTagExplorerBenchmarkState(route, view, mode);
+}
+
+async function runTagExplorerInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = EXPLORER_ROOT;
+  const tracksControl = EXPLORER_TRACKS;
+  const andControl = EXPLORER_AND;
+  const results: BenchmarkInteractionResult[] = [];
+  const wait = (view: ExplorerBenchmarkView, mode: ExplorerBenchmarkMode) =>
+    waitForTagExplorerBenchmarkState(route, view, mode);
+  const ensure = (view: ExplorerBenchmarkView, mode: ExplorerBenchmarkMode) =>
+    ensureTagExplorerBenchmarkState(route, view, mode);
+
+  try {
+    const setup = await measureInteraction(
+      'state:explorer-prepare-albums-or',
+      'filter',
+      async () => ({
+        status: await ensure('albums', 'or') ? 'completed' : 'timeout',
+      }),
+    );
+    results.push(setup);
+    if (setup.status !== 'completed') return results;
+
+    results.push(
+      await runPaginationInteraction(
+        route,
+        'pagination:explorer-albums-next-page',
+      ),
+    );
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-albums',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('albums', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    const reset = await measureInteraction(
+      'state:explorer-reset-albums-or',
+      'filter',
+      async () => ({
+        status: await ensure('albums', 'or') ? 'completed' : 'timeout',
+      }),
+    );
+    results.push(reset);
+    if (reset.status !== 'completed') return results;
+
+    results.push(await measureInteraction(
+      'view:explorer-tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer Tracks tab unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'or');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+
+    if (await ensure('tracks', 'or')) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:explorer-tracks-next-page',
+        ),
+      );
+    }
+
+    results.push(await measureInteraction(
+      'filter:explorer-and-tracks',
+      'filter',
+      async () => {
+        if (!click(andControl)) {
+          return {
+            status: 'skipped',
+            details: { reason: 'Explorer AND control unavailable' },
+          };
+        }
+        const completed = await wait('tracks', 'and');
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    ));
+  } finally {
+    results.push(await measureInteraction(
+      'state:explorer-restore-albums-or',
+      'filter',
+      async () => {
+        const restored = await ensure('albums', 'or');
+        return {
+          status: restored ? 'completed' : 'timeout',
+          details: {
+            restored,
+            view: browseState(rootSelector, 'data-benchmark-tag-explorer-view'),
+            mode: browseState(rootSelector, 'data-benchmark-tag-explorer-mode'),
+          },
+        };
+      },
+    ));
+  }
+
+  return results;
+}
+
+async function runGenreDetailInteractions(
+  route: string,
+): Promise<BenchmarkInteractionResult[]> {
+  const rootSelector = '[data-benchmark-genre-detail-view]';
+  const albumsControl = '[data-benchmark-genre-view="albums"]';
+  const tracksControl = '[data-benchmark-genre-view="tracks"]';
+  const results: BenchmarkInteractionResult[] = [];
+
+  results.push(
+    await runPaginationInteraction(
+      route,
+      'pagination:albums-next-page',
+    ),
+  );
+
+  try {
+    const tracks = await measureInteraction(
+      'view:tracks-first-page',
+      'filter',
+      async () => {
+        if (!click(tracksControl)) {
+          return {
+            status: 'skipped',
+            details: {
+              reason: 'genre Tracks tab unavailable',
+            },
+          };
+        }
+
+        const completed = await waitForBrowseState(
+          rootSelector,
+          'data-benchmark-genre-detail-view',
+          'tracks',
+        );
+
+        return {
+          status: completed ? 'completed' : 'timeout',
+          details: {
+            resultCount: resultCount(rootSelector),
+          },
+        };
+      },
+    );
+    results.push(tracks);
+
+    if (
+      tracks.status === 'completed' &&
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks'
+    ) {
+      results.push(
+        await runPaginationInteraction(
+          route,
+          'pagination:tracks-next-page',
+        ),
+      );
+    }
+  } finally {
+    if (
+      browseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+      ) === 'tracks' &&
+      click(albumsControl)
+    ) {
+      await waitForBrowseState(
+        rootSelector,
+        'data-benchmark-genre-detail-view',
+        'albums',
+      );
+    }
+  }
+
+  return results;
+}
+
 export async function runBenchmarkInteractions(
   route: string,
   searchQuery: string | null,
@@ -381,6 +641,15 @@ export async function runBenchmarkInteractions(
   if (path === '/search/advanced') {
     const search = await runSearchInteraction(searchQuery);
     return [search, await runPaginationInteraction(route)];
+  }
+  if (
+    path === '/genres/explore/results'
+    || path === '/moods/explore/results'
+  ) {
+    return runTagExplorerInteractions(route);
+  }
+  if (/^\/genres\/[^/]+$/.test(path)) {
+    return runGenreDetailInteractions(route);
   }
   if (routeSupportsScrollPagination(route)) return [await runPaginationInteraction(route)];
   return [];

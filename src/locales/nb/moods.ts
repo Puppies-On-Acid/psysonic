@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Stemningsresultater",
   tracksEmpty: "Fant ingen spor for denne stemningen.",
   back: 'Tilbake',
+  selectTags: 'Velg',
+  cancelSelection: 'Avbryt',
+  clearSelection: 'Tøm',
+  selectedTagCount_one: '{{count}} tagg valgt',
+  selectedTagCount_other: '{{count}} tagger valgt',
+  selectionMinimum: 'Velg minst to tagger for å se kombinerte resultater.',
+  viewResults: 'Vis resultater',
+  genreTagLabel: 'Sjanger',
+  moodTagLabel: 'Stemning',
 };

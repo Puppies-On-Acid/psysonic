@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: 'Αποτελέσματα διάθεσης',
   tracksEmpty: 'Δεν βρέθηκαν τραγούδια για αυτήν τη διάθεση.',
   back: 'Πίσω',
+  selectTags: 'Επιλογή',
+  cancelSelection: 'Ακύρωση',
+  clearSelection: 'Εκκαθάριση',
+  selectedTagCount_one: '{{count}} ετικέτα επιλεγμένη',
+  selectedTagCount_other: '{{count}} ετικέτες επιλεγμένες',
+  selectionMinimum: 'Επιλέξτε τουλάχιστον δύο ετικέτες για συνδυασμένα αποτελέσματα.',
+  viewResults: 'Προβολή αποτελεσμάτων',
+  genreTagLabel: 'Είδος',
+  moodTagLabel: 'Διάθεση',
 };

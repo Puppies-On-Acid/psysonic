@@ -31,6 +31,7 @@ import {
   coverTrafficSetBenchmarkHold,
 } from '@/cover/coverTraffic';
 import { benchmarkMoodDetailReady, benchmarkRouteMatchesLocation, resolveBenchmarkRoutes } from './benchmarkRoutes';
+import { benchmarkTagExplorerReady } from './benchmarkTagExplorerReady';
 import { runBenchmarkInteractions } from './benchmarkInteractions';
 import {
   benchmarkRouteTerminalSteps,
@@ -115,7 +116,17 @@ function waitForPath(route: string, timeoutMs: number): Promise<number> {
   });
 }
 
+function isTagExplorerBenchmarkRoute(route: string): boolean {
+  const path = new URL(route, window.location.origin).pathname;
+  return path === '/genres/explore/results'
+    || path === '/moods/explore/results';
+}
+
 function semanticRouteReady(route: string): boolean {
+  if (isTagExplorerBenchmarkRoute(route)) {
+    const root = document.querySelector<HTMLElement>('[data-benchmark-tag-explorer-view]');
+    return benchmarkTagExplorerReady(route, root, window.location);
+  }
   if (route.startsWith('/moods/')) {
     return benchmarkMoodDetailReady(route, document.querySelector('[data-benchmark-mood-name]'));
   }
@@ -140,6 +151,18 @@ function currentRoute(): string {
 }
 
 function routeReadinessDetails(route: string): unknown {
+  if (isTagExplorerBenchmarkRoute(route)) {
+    const root = document.querySelector<HTMLElement>('[data-benchmark-tag-explorer-view]');
+    return root ? {
+      view: root.getAttribute('data-benchmark-tag-explorer-view'),
+      mode: root.getAttribute('data-benchmark-tag-explorer-mode'),
+      loading: root.getAttribute('data-benchmark-loading'),
+      queryReady: root.getAttribute('data-benchmark-query-ready'),
+      queryError: root.getAttribute('data-benchmark-query-error'),
+      tags: root.getAttribute('data-benchmark-tag-explorer-tags'),
+      resultCount: root.getAttribute('data-benchmark-result-count'),
+    } : { state: 'Explorer root unavailable' };
+  }
   if (route.startsWith('/moods/')) {
     const root = document.querySelector('[data-benchmark-mood-name]');
     return {
@@ -367,11 +390,15 @@ export default function BenchmarkRunner() {
               .filter(entry => entry.startTime >= resourceStartedAt);
             const totalMs = Math.round(performance.now() - totalStarted);
             const cpuAfter = await cpuSnapshot();
+            // Interactions intentionally change Explorer mode/view; capture the
+            // route sample before those controls mutate the browser location.
+            const sampledRoute = currentRoute();
+            const sampledReadinessDetails = routeReadinessDetails(route);
             const interactions = await runBenchmarkInteractions(route, routeResolution.searchQuery);
             pages.push({
               route,
               fromRoute,
-              actualRoute: currentRoute(),
+              actualRoute: sampledRoute,
               iteration,
               temperature: iteration === 1 ? 'cold' : 'warm',
               navigationMs,
@@ -382,7 +409,7 @@ export default function BenchmarkRunner() {
               timedOut: readiness.timedOut || quiet.timedOut,
               readinessTimedOut: readiness.timedOut,
               stabilityTimedOut: quiet.timedOut,
-              readinessDetails: routeReadinessDetails(route),
+              readinessDetails: sampledReadinessDetails,
               mutationCount: quiet.mutationCount,
               longTaskCount: longTasks.length,
               longTaskTotalMs: Math.round(longTasks.reduce((sum, value) => sum + value, 0)),

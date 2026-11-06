@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Resultados del estado de ánimo",
   tracksEmpty: "No se encontraron canciones para este estado de ánimo.",
   back: 'Volver',
+  selectTags: 'Seleccionar',
+  cancelSelection: 'Cancelar',
+  clearSelection: 'Borrar',
+  selectedTagCount_one: '{{count}} etiqueta seleccionada',
+  selectedTagCount_other: '{{count}} etiquetas seleccionadas',
+  selectionMinimum: 'Selecciona al menos dos etiquetas para ver resultados combinados.',
+  viewResults: 'Ver resultados',
+  genreTagLabel: 'Género',
+  moodTagLabel: 'Estado de ánimo',
 };
