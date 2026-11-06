@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   flushQueue: vi.fn(async () => undefined),
 }));
 
-vi.mock('@/app/windowKind', () => ({
+vi.mock('@/lib/windowKind', () => ({
   getWindowKind: () => 'main',
 }));
 

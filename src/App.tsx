@@ -9,7 +9,7 @@ import { bumpThemeRevision } from '@/lib/themes/themeRevision';
 import { reconcileThemeAssetsOnStartup } from '@/app/themeAssetStartup';
 import { useThemeScheduler } from '@/app/hooks/useThemeScheduler';
 import { useFontStore } from './store/fontStore';
-import { getWindowKind } from './app/windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import { showToast } from '@/lib/dom/toast';
 import MiniPlayerApp from './app/MiniPlayerApp';
 import MainApp from './app/MainApp';

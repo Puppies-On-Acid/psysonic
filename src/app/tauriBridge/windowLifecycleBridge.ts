@@ -13,7 +13,7 @@ import {
   windowLifecycleUpdateFallbackPolicy,
 } from '@/lib/api/platformShell';
 import { useAuthStore } from '@/store/authStore';
-import { getWindowKind } from '@/app/windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 
 let setupPromise: Promise<void> | null = null;
 let exitPromise: Promise<void> | null = null;

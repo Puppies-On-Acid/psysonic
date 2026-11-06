@@ -2,7 +2,7 @@ import { installQueueUndoHotkey } from '@/features/playback/store/queueUndoHotke
 import { configureStartupSplash } from './startupSplash';
 import { setupMusicNetworkRuntime } from './musicNetworkBridge';
 import { setLoggingMode, setSubsonicWireUserAgent } from '@/lib/api/platformShell';
-import { getWindowKind } from './windowKind';
+import { getWindowKind } from '@/lib/windowKind';
 import { migrateThemeSelection } from '@/lib/themes/themeMigration';
 import { getScheduledTheme, useThemeStore } from '../store/themeStore';
 import { gateInjectedThemes, syncInjectedThemes } from '@/lib/themes/themeInjection';

@@ -19,7 +19,7 @@ import { flushPlayQueuePosition } from '@/features/playback/store/queueSync';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { currentWindowLabelMock } = vi.hoisted(() => ({
-  currentWindowLabelMock: vi.fn(() => 'main' as 'main' | 'mini'),
+  currentWindowLabelMock: vi.fn((): string => 'main'),
 }));
 
 vi.mock('@tauri-apps/api/window', async importOriginal => ({
@@ -86,6 +86,7 @@ import { emitTauriEvent, onInvoke } from '@/test/mocks/tauri';
 import { resetPlayerStore, resetAuthStore } from '@/test/helpers/storeReset';
 import { makeTrack, makeTracks, seedQueue } from '@/test/helpers/factories';
 import { NAVIDROME_CANONICAL_BOOTSTRAP_LOCK_KEY } from '@/lib/server/navidromeCanonicalCheckpointStatus';
+import { _resetWindowKindCacheForTest } from '@/lib/windowKind';
 
 function stubInvokes(): void {
   onInvoke('audio_play', () => undefined);
@@ -105,6 +106,7 @@ let cleanupListeners: (() => void) | null = null;
 beforeEach(() => {
   vi.useFakeTimers();
   currentWindowLabelMock.mockReturnValue('main');
+  _resetWindowKindCacheForTest();
   resetPlayerStore();
   resetAuthStore();
   stubInvokes();
@@ -118,6 +120,7 @@ afterEach(() => {
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
   localStorage.removeItem(NAVIDROME_CANONICAL_BOOTSTRAP_LOCK_KEY);
+  _resetWindowKindCacheForTest();
 });
 
 
@@ -134,6 +137,7 @@ describe('main-window-only local queue persistence', () => {
     // Two webviews hydrate separate store instances against one localStorage.
     // Mini-player sync used to overwrite main's queue via a queueServerId set.
     currentWindowLabelMock.mockReturnValue('mini');
+    _resetWindowKindCacheForTest();
     usePlayerStore.setState({ queueItems: [{ serverId: 'srv-test', trackId: 'stale-mini' }] });
     usePlayerStore.setState({ queueServerId: 'srv-test' });
 
@@ -142,8 +146,10 @@ describe('main-window-only local queue persistence', () => {
 
   it('still persists edits made in the main window', () => {
     currentWindowLabelMock.mockReturnValue('mini');
+    _resetWindowKindCacheForTest();
     usePlayerStore.setState({ queueServerId: 'srv-test' });
     currentWindowLabelMock.mockReturnValue('main');
+    _resetWindowKindCacheForTest();
 
     const latestQueue = [{ serverId: 'srv-test', trackId: 'device-local' }];
     usePlayerStore.setState({ queueItems: latestQueue, queueIndex: 0 });
@@ -153,6 +159,32 @@ describe('main-window-only local queue persistence', () => {
     expect(saved.state.queueItemsIndex).toBe(0);
   });
 });
+
+
+  it('refuses queue persistence from an unexpected window label', () => {
+    const original = [{ serverId: 'srv-test', trackId: 'main-track' }];
+    usePlayerStore.setState({ queueItems: original, queueIndex: 0 });
+    const saved = localStorage.getItem('psysonic-player');
+
+    currentWindowLabelMock.mockReturnValue('overlay');
+    _resetWindowKindCacheForTest();
+    usePlayerStore.setState({
+      queueItems: [{ serverId: 'srv-test', trackId: 'unexpected-window-track' }],
+    });
+
+    expect(localStorage.getItem('psysonic-player')).toBe(saved);
+  });
+
+  it('looks up the main-window label only once across player-store writes', () => {
+    _resetWindowKindCacheForTest();
+    currentWindowLabelMock.mockClear();
+
+    for (let index = 0; index < 30; index += 1) {
+      usePlayerStore.setState({ volume: index / 30 });
+    }
+
+    expect(currentWindowLabelMock).toHaveBeenCalledOnce();
+  });
 
 describe('canonical migration persistence fence', () => {
   it('blocks player-store writes while the bootstrap lock is active', async () => {
