@@ -603,6 +603,7 @@ export default function GenreDetail() {
               aria-controls="genre-detail-panel"
               tabIndex={view === 'albums' ? 0 : -1}
               className={`btn ${view === 'albums' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              data-benchmark-genre-view="albums"
               onClick={() => selectView('albums')}
             >
               {t('common.albums')}
@@ -615,6 +616,7 @@ export default function GenreDetail() {
               aria-controls="genre-detail-panel"
               tabIndex={view === 'tracks' ? 0 : -1}
               className={`btn ${view === 'tracks' ? 'btn-primary' : 'btn-ghost'} artist-tracks-tab`}
+              data-benchmark-genre-view="tracks"
               onClick={() => selectView('tracks')}
             >
               {t('tracks.title')}
@@ -671,6 +673,9 @@ export default function GenreDetail() {
           id="genre-detail-panel"
           role="tabpanel"
           aria-labelledby={`genre-detail-tab-${view}`}
+          data-benchmark-genre-detail-view={view}
+          data-benchmark-loading={activeLoading ? 'true' : 'false'}
+          data-benchmark-result-count={activeDisplayCount}
         >
           {view === 'albums' ? (
             albumsLoading && albums.length === 0 ? (
