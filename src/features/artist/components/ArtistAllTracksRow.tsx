@@ -9,13 +9,24 @@ import { formatTrackTime } from '@/lib/format/formatDuration';
 import i18n from '@/lib/i18n';
 import { ResolvedArtistRefInline } from '@/ui/ResolvedArtistRefInline';
 import { useAuthStore } from '@/store/authStore';
-import { resolveTrackArtistRefs, useTrackPlayStats } from '@/features/playback';
+import {
+  resolveTrackArtistRefs,
+  usePlayerStore,
+  useTrackPlayStats,
+} from '@/features/playback';
 import { OptionalBrowseTrackRowCoverThumb } from '@/cover/TrackRowCoverThumb';
 import { ExplicitTitle } from '@/ui/ExplicitBadge';
 import ExplicitCoverVeil from '@/ui/ExplicitCoverVeil';
 import { isExplicit } from '@/lib/media/explicitStatus';
 import { TracklistCell } from '@/ui/tracklist/TracklistCell';
 import { songCellText } from '@/ui/tracklist/measureColumnContent';
+import { TrackPlaylistMembershipCell } from '@/features/playlist';
+import type {
+  TrackPlaylistMembershipTruthState,
+  TrackPlaylistRef,
+} from '@/store/playlistMembershipIndex';
+
+const TRACK_ROW_INTERACTIVE_SELECTOR = 'button, a, input, select, textarea';
 
 export interface ArtistAllTracksRowCallbacks {
   activate: (song: SubsonicSong, index: number, e: React.MouseEvent) => void;
@@ -42,6 +53,8 @@ interface Props {
   doubleClickActive: boolean;
   /** Set only on the list's cursor row (`useTrackListCursor`). */
   cursorRowId?: string;
+  playlistMemberships: readonly TrackPlaylistRef[];
+  playlistMembershipTruthState: TrackPlaylistMembershipTruthState;
   cb: ArtistAllTracksRowCallbacks;
 }
 
@@ -52,12 +65,14 @@ interface Props {
  */
 function ArtistAllTracksRow({
   song, index: i, visibleCols, gridStyle, showBitrate,
-  isActive, showEq, isPreviewing, previewStarted, doubleClickActive, cursorRowId, cb,
+  isActive, showEq, isPreviewing, previewStarted, doubleClickActive, cursorRowId,
+  playlistMemberships, playlistMembershipTruthState, cb,
 }: Props) {
   const { t } = useTranslation();
   // `song.serverId` is only stamped on owned/multi-server rows.
   const activeServerId = useAuthStore(s => s.activeServerId ?? '');
   const playStats = useTrackPlayStats(song);
+  const openGlobalContextMenu = usePlayerStore(state => state.openContextMenu);
 
   const renderCell = (colDef: ColDef) => {
     switch (colDef.key) {
@@ -126,6 +141,20 @@ function ArtistAllTracksRow({
           />
         </div>
       );
+      case 'playlists': return (
+        <TrackPlaylistMembershipCell
+          memberships={playlistMemberships}
+          truthState={playlistMembershipTruthState}
+          onPlaylistContextMenu={(event, playlist) => {
+            openGlobalContextMenu(
+              event.clientX,
+              event.clientY,
+              { ...playlist, songId: song.id },
+              'playlist-membership',
+            );
+          }}
+        />
+      );
       case 'duration': return (
         <div key="duration" className="track-duration">{formatTrackTime(song.duration)}</div>
       );
@@ -171,7 +200,10 @@ function ArtistAllTracksRow({
       role="row"
       onClick={e => cb.activate(song, i, e)}
       onDoubleClick={doubleClickActive ? e => cb.doubleClick(song, i, e) : undefined}
-      onContextMenu={e => cb.context(song, e)}
+      onContextMenu={e => {
+        if ((e.target as HTMLElement).closest(TRACK_ROW_INTERACTIVE_SELECTOR)) return;
+        cb.context(song, e);
+      }}
       onMouseDown={e => cb.mouseDownRow(song, e)}
     >
       {visibleCols.map(colDef => (

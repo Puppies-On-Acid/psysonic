@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 const useArtistAllTracks = vi.hoisted(() => vi.fn());
+const allTracksListProps = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/artist/hooks/useArtistAllTracks', () => ({ useArtistAllTracks }));
 vi.mock('@/features/artist/components/ArtistDetailTopTracks', () => ({
   default: () => <div data-testid="top-list" />,
 }));
 vi.mock('@/features/artist/components/ArtistAllTracksList', () => ({
-  default: () => <div data-testid="all-list" />,
+  default: (props: Record<string, unknown>) => {
+    allTracksListProps(props);
+    return <div data-testid="all-list" />;
+  },
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -16,7 +20,7 @@ vi.mock('react-i18next', () => ({
 
 import ArtistDetailTracksSection from '@/features/artist/components/ArtistDetailTracksSection';
 
-function renderSection() {
+function renderSection(playlistMembershipHydrationEnabled = true) {
   return render(
     <ArtistDetailTracksSection
       topSongs={[]}
@@ -28,6 +32,7 @@ function renderSection() {
       serverId="srv-1"
       artistId="ar-1"
       onPlayAllTracks={vi.fn()}
+      playlistMembershipHydrationEnabled={playlistMembershipHydrationEnabled}
     />,
   );
 }
@@ -37,6 +42,7 @@ const tab = (name: string) => screen.getByRole('tab', { name });
 describe('ArtistDetailTracksSection', () => {
   beforeEach(() => {
     useArtistAllTracks.mockReset().mockReturnValue({ tracks: [], loading: false, failed: false });
+    allTracksListProps.mockReset();
   });
 
   it('opens on the ranking', () => {
@@ -54,6 +60,15 @@ describe('ArtistDetailTracksSection', () => {
 
     fireEvent.click(tab('artistDetail.tracksTabAll'));
     expect(useArtistAllTracks).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: true }));
+  });
+
+  it.each([true, false])('forwards playlist membership hydration enabled=%s to the full list', (enabled) => {
+    renderSection(enabled);
+    fireEvent.click(tab('artistDetail.tracksTabAll'));
+
+    expect(allTracksListProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ playlistMembershipHydrationEnabled: enabled }),
+    );
   });
 
   it('swaps the table and moves the selection', () => {
@@ -92,6 +107,7 @@ describe('ArtistDetailTracksSection', () => {
         marginTop="0"
         playTopSongWithContinuation={vi.fn()}
         losslessOnly
+        playlistMembershipHydrationEnabled
         scopes={[{ serverId: 'srv-1', libraryId: null }]}
         serverId="srv-1"
         artistId="ar-1"

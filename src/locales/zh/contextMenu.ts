@@ -20,6 +20,7 @@ export const contextMenu = {
   unfavoriteAlbum: '取消收藏专辑',
   removeFromQueue: '从队列中移除',
   openAlbum: '打开专辑',
+  openPlaylist: '打开播放列表',
   goToArtist: '前往艺术家',
   download: '下载 (ZIP)',
   addToPlaylist: '添加到播放列表',

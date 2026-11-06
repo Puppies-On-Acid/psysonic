@@ -48,7 +48,12 @@ export async function addTracksToPlaylistWithDedup(
       return songs.map(s => s.id);
     }, serverId),
   );
-  const newIds = trackIds.filter(id => !existingIds.has(id));
+  const newIds: string[] = [];
+  for (const id of trackIds) {
+    if (existingIds.has(id)) continue;
+    existingIds.add(id);
+    newIds.push(id);
+  }
 
   try {
     if (newIds.length > 0) {

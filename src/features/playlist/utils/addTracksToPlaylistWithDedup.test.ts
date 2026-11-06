@@ -56,6 +56,25 @@ describe('addTracksToPlaylistWithDedup', () => {
     expect(usePlaylistMembershipStore.getState().getPlaylistSongIds('pl-2', 'srv-1')).toEqual(['x', 'y']);
   });
 
+  it('dedupes repeated ids inside the same add payload', async () => {
+    const result = await addTracksToPlaylistWithDedup(
+      'pl-1',
+      'Mix',
+      ['c', 'c', 'd', 'd'],
+      k => k,
+      'srv-1',
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'partial',
+      addedCount: 2,
+      skippedCount: 2,
+    });
+    expect(addSongsToPlaylistMock).toHaveBeenCalledWith('pl-1', ['c', 'd'], 'srv-1');
+    expect(usePlaylistMembershipStore.getState().getPlaylistSongIds('pl-1', 'srv-1'))
+      .toEqual(['a', 'b', 'c', 'd']);
+  });
+
   it('invalidates cache when the write fails', async () => {
     addSongsToPlaylistMock.mockRejectedValueOnce(new Error('boom'));
     await expect(

@@ -76,7 +76,7 @@ function setUpActiveServer(): ServerProfile {
 }
 
 function openMenuFor(
-  type: 'song' | 'album' | 'artist' | 'queue-item' | 'album-song' | 'playlist',
+  type: 'song' | 'album' | 'artist' | 'queue-item' | 'album-song' | 'playlist' | 'playlist-membership',
   item: unknown,
   queueIndex?: number,
   timelineFromHereRefs?: { serverId: string; trackId: string }[],
@@ -320,6 +320,66 @@ describe('ContextMenu — type=queue-item', () => {
     // assert *something* queue-flavoured appears (we don't pin the exact
     // wording so a translation tweak doesn't flip the test).
     expect(container.textContent).toMatch(/remove/i);
+  });
+});
+
+describe('ContextMenu — type=playlist-membership', () => {
+  it('contains only Open Playlist and Remove from Playlist', () => {
+    openMenuFor('playlist-membership', {
+      id: 'pl-1',
+      serverId: 'srv-1',
+      name: 'Road Trip',
+      songId: 'song-1',
+      smart: false,
+      readonly: false,
+    });
+
+    const { container, getByText } = renderWithProviders(<ContextMenu />);
+    expect(getByText('Open Playlist')).toBeInTheDocument();
+    expect(getByText('Remove from Playlist')).toBeInTheDocument();
+
+    const labels = [...container.querySelectorAll('.context-menu-item')]
+      .map(item => item.textContent?.trim());
+    expect(labels).toEqual(['Open Playlist', 'Remove from Playlist']);
+  });
+
+  it('enables removal for an editable manual playlist', () => {
+    openMenuFor('playlist-membership', {
+      id: 'pl-1',
+      serverId: 'srv-1',
+      name: 'Road Trip',
+      songId: 'song-1',
+      smart: false,
+      readonly: false,
+    });
+
+    const { getByText } = renderWithProviders(<ContextMenu />);
+    const remove = getByText('Remove from Playlist')
+      .closest('.context-menu-item') as HTMLElement;
+
+    expect(remove.className).not.toContain('is-disabled');
+    expect(remove.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it.each([
+    { label: 'smart', smart: true, readonly: false },
+    { label: 'read-only', smart: false, readonly: true },
+  ])('disables removal for $label membership', ({ smart, readonly }) => {
+    openMenuFor('playlist-membership', {
+      id: 'pl-1',
+      serverId: 'srv-1',
+      name: 'Road Trip',
+      songId: 'song-1',
+      smart,
+      readonly,
+    });
+
+    const { getByText } = renderWithProviders(<ContextMenu />);
+    const remove = getByText('Remove from Playlist')
+      .closest('.context-menu-item') as HTMLElement;
+
+    expect(remove.className).toContain('is-disabled');
+    expect(remove.getAttribute('aria-disabled')).toBe('true');
   });
 });
 

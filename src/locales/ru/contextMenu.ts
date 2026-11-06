@@ -23,6 +23,7 @@ export const contextMenu = {
   removeFromQueue: 'Убрать из очереди',
   removeFromPlaylist: 'Убрать из плейлиста',
   openAlbum: 'Открыть альбом',
+  openPlaylist: 'Открыть плейлист',
   goToArtist: 'К исполнителю',
   download: 'Скачать (ZIP)',
   addToPlaylist: 'В плейлист',

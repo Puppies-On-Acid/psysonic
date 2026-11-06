@@ -28,6 +28,8 @@ import { COVER_ARTIST_TOP_TRACK_CSS_PX } from '@/cover/layoutSizes';
 import { useWarmTrackListAlbumCovers } from '@/cover/useWarmTrackListAlbumCovers';
 import { useTrackListCoverArtEnabled } from '@/cover/useTrackListCoverArtSettings';
 import { useResolvedTracklistBpm } from '@/lib/hooks/useResolvedTracklistBpm';
+import { usePlaylistMembershipHydrationForServers } from '@/features/playlist';
+import { playlistMembershipsForTrack } from '@/store/playlistMembershipIndex';
 import ArtistAllTracksRow, { type ArtistAllTracksRowCallbacks } from '@/features/artist/components/ArtistAllTracksRow';
 import {
   ARTIST_ALL_TRACKS_COLUMNS,
@@ -54,6 +56,10 @@ interface Props {
    * rather than floating above the table on a line of its own.
    */
   columns: ReturnType<typeof useTracklistColumns>;
+  /** Owner to use only for legacy rows that are not explicitly server-stamped. */
+  playlistMembershipFallbackServerId: string;
+  /** False during offline browsing, even if the Playlists column is visible. */
+  playlistMembershipHydrationEnabled: boolean;
 }
 
 /**
@@ -63,7 +69,15 @@ interface Props {
  * Virtualised because this list is unbounded — a prolific artist can reach into the
  * thousands, where the album tracklist tops out at one record.
  */
-export default function ArtistAllTracksList({ songs, loading, failed, onPlay, columns }: Props) {
+export default function ArtistAllTracksList({
+  songs,
+  loading,
+  failed,
+  onPlay,
+  columns,
+  playlistMembershipFallbackServerId,
+  playlistMembershipHydrationEnabled,
+}: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const currentTrack = usePlayerStore(s => s.currentTrack);
@@ -88,6 +102,24 @@ export default function ArtistAllTracksList({ songs, loading, failed, onPlay, co
     songs,
     colVisible.has('bpm') || sort.key === 'bpm',
   );
+  const playlistMembershipActive = playlistMembershipHydrationEnabled && colVisible.has('playlists');
+  const playlistMembershipServerIds = useMemo(() => {
+    if (!playlistMembershipActive) return [];
+    const owners = new Set<string>();
+    for (const song of songs) {
+      const owner = song.serverId ?? playlistMembershipFallbackServerId;
+      if (owner) owners.add(owner);
+    }
+    return [...owners].sort();
+  }, [
+    playlistMembershipActive,
+    playlistMembershipFallbackServerId,
+    songs,
+  ]);
+  const playlistMembershipView = usePlaylistMembershipHydrationForServers({
+    enabled: playlistMembershipActive,
+    serverIds: playlistMembershipServerIds,
+  });
   const displayed = useMemo(
     () => sortArtistAllTracks(resolvedBpmSongs, sort),
     [resolvedBpmSongs, sort],
@@ -257,6 +289,18 @@ export default function ArtistAllTracksList({ songs, loading, failed, onPlay, co
           {virtualItems.map(vi => {
             const song = displayed[vi.index];
             const isActive = sameQueueTrack(currentTrack, song);
+            const membershipServerId = playlistMembershipActive
+              ? song.serverId ?? playlistMembershipFallbackServerId
+              : undefined;
+            const playlistMemberships = membershipServerId
+              ? playlistMembershipsForTrack(
+                playlistMembershipView.index,
+                { id: song.id, serverId: membershipServerId },
+              )
+              : [];
+            const playlistMembershipTruthState = membershipServerId
+              ? playlistMembershipView.truthStateByServer[membershipServerId] ?? 'loading'
+              : 'unknown';
             return (
               <div
                 key={vi.key}
@@ -282,6 +326,8 @@ export default function ArtistAllTracksList({ songs, loading, failed, onPlay, co
                   previewStarted={previewingId === song.id && previewAudioStarted}
                   doubleClickActive={orbitActive || doubleClickToPlay}
                   cursorRowId={cursor.cursorIndex === vi.index ? cursor.cursorRowId : undefined}
+                  playlistMemberships={playlistMemberships}
+                  playlistMembershipTruthState={playlistMembershipTruthState}
                   cb={cb}
                 />
               </div>
