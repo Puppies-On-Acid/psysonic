@@ -15,8 +15,6 @@ export const genres = {
   empty: 'Geen genres gevonden.',
   albumsLoading: 'Albums laden…',
   albumsEmpty: 'Geen albums gevonden voor dit genre.',
-  tracksEmpty: 'Geen nummers gevonden voor dit genre.',
-  viewTabsLabel: 'Genreresultaten',
   loadMore: 'Meer laden',
   back: 'Terug',
   playTooltip: 'Afspelen (ingedrukt houden om te shufflen)',

@@ -15,8 +15,6 @@ export const genres = {
   empty: 'Nem található műfaj.',
   albumsLoading: 'Albumok betöltése…',
   albumsEmpty: 'Nem található album ehhez a műfajhoz.',
-  tracksEmpty: 'Nem található szám ehhez a műfajhoz.',
-  viewTabsLabel: 'Műfaj találatai',
   loadMore: 'Több betöltése',
   back: 'Vissza',
   playTooltip: 'Lejátszás (tartsd nyomva a keveréshez)',

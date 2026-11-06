@@ -16,8 +16,6 @@ export const genres = {
   sortAlphabetical: 'Alfabetico',
   albumsLoading: 'Caricamento degli album…',
   albumsEmpty: 'Nessun album trovato per questo genere.',
-  tracksEmpty: 'Nessun brano trovato per questo genere.',
-  viewTabsLabel: 'Risultati del genere',
   loadMore: 'Carica altri',
   back: 'Indietro',
   playTooltip: 'Riproduci (tieni premuto per la riproduzione casuale)',

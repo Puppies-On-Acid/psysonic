@@ -15,8 +15,6 @@ export const genres = {
   empty: 'Ingen sjangre funnet.',
   albumsLoading: 'Laster album…',
   albumsEmpty: 'Ingen album funnet for denne sjangeren.',
-  tracksEmpty: 'Ingen spor funnet for denne sjangeren.',
-  viewTabsLabel: 'Sjangerresultater',
   loadMore: 'Last mer',
   back: 'Tilbake',
   playTooltip: 'Spill av (hold for tilfeldig rekkefølge)',

@@ -15,8 +15,6 @@ export const genres = {
   sortAlphabetical: 'Alphabetical',
   albumsLoading: 'Loading albums…',
   albumsEmpty: 'No albums found for this genre.',
-  tracksEmpty: 'No tracks found for this genre.',
-  viewTabsLabel: 'Genre results',
   loadMore: 'Load more',
   back: 'Back',
   playTooltip: 'Play (hold to shuffle)',

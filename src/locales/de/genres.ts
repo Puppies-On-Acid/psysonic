@@ -15,8 +15,6 @@ export const genres = {
   empty: 'Keine Genres gefunden.',
   albumsLoading: 'Alben werden geladen…',
   albumsEmpty: 'Keine Alben in diesem Genre gefunden.',
-  tracksEmpty: 'Keine Titel für dieses Genre gefunden.',
-  viewTabsLabel: 'Genre-Ergebnisse',
   loadMore: 'Mehr laden',
   back: 'Zurück',
   playTooltip: 'Abspielen (halten zum Mischen)',
