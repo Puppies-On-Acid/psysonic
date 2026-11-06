@@ -87,6 +87,69 @@ describe('useGenreTrackBrowse', () => {
     await waitFor(() => expect(result.current.total).toBe(2));
   });
 
+  it('starts in loading state when the Tracks view mounts active', () => {
+    hoisted.fetchGenreTrackPage.mockReturnValue(
+      new Promise(() => {}),
+    );
+
+    const { result } = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Progressive Rock',
+        true,
+        true,
+        1,
+        browseScope,
+      ),
+    );
+
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('reuses the loaded track session after remounting the same genre', async () => {
+    hoisted.fetchGenreTrackPage.mockResolvedValueOnce({
+      songs: songs(0, 100),
+      hasMore: true,
+      total: 347,
+    });
+
+    const first = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Cache Test Genre',
+        true,
+        true,
+        7,
+        browseScope,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(first.result.current.songs).toHaveLength(100),
+    );
+
+    first.unmount();
+
+    const second = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Cache Test Genre',
+        true,
+        true,
+        7,
+        browseScope,
+      ),
+    );
+
+    expect(second.result.current.songs).toHaveLength(100);
+    expect(second.result.current.total).toBe(347);
+    expect(second.result.current.loading).toBe(false);
+
+    await waitFor(() =>
+      expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(1),
+    );
+  });
+
   it('keeps a loaded track session while the Tracks tab is inactive', async () => {
     hoisted.fetchGenreTrackPage.mockResolvedValueOnce({
       songs: songs(0, 2),
@@ -176,6 +239,86 @@ describe('useGenreTrackBrowse', () => {
       expect(second.result.current.songs).toHaveLength(3),
     );
     expect(second.result.current.total).toBe(3);
+    expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a readiness failure as an empty result', async () => {
+    hoisted.fetchGenreTrackPage
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        songs: songs(0, 2),
+        hasMore: false,
+        total: 2,
+      });
+
+    const first = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Readiness Failure Genre',
+        true,
+        true,
+        11,
+        browseScope,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(first.result.current.loading).toBe(false),
+    );
+    expect(first.result.current.songs).toHaveLength(0);
+    expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(1);
+
+    first.unmount();
+
+    const second = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Readiness Failure Genre',
+        true,
+        true,
+        11,
+        browseScope,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(second.result.current.songs).toHaveLength(2),
+    );
+    expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries after the library sync revision changes', async () => {
+    hoisted.fetchGenreTrackPage
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        songs: songs(0, 3),
+        hasMore: false,
+        total: 3,
+      });
+
+    const { result, rerender } = renderHook(() =>
+      useGenreTrackBrowse(
+        'srv-1',
+        'Initial Sync Genre',
+        true,
+        true,
+        12,
+        browseScope,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(result.current.loading).toBe(false),
+    );
+    expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(1);
+
+    hoisted.useLibraryScopeSyncRevision.mockReturnValue(1);
+    rerender();
+
+    await waitFor(() =>
+      expect(result.current.songs).toHaveLength(3),
+    );
+    expect(result.current.total).toBe(3);
     expect(hoisted.fetchGenreTrackPage).toHaveBeenCalledTimes(2);
   });
 
