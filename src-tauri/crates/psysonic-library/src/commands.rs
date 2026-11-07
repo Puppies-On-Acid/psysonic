@@ -855,7 +855,6 @@ pub async fn library_tag_explorer_track_refs(
     library_spawn_blocking(move || crate::tag_explorer::list_track_refs(&store, &request)).await
 }
 
-
 // NOT specta-collected: response contains LibraryAlbumDto.raw_json (serde_json::Value).
 #[tauri::command]
 pub async fn library_list_albums_by_mood(
