@@ -34,14 +34,22 @@ export function genresLabel(song: SubsonicSong): string {
  * moods the analysis derives — those are ids the app translates, these are the
  * words the tagger wrote and are shown as they are.
  */
-export function moodsLabel(song: SubsonicSong): string {
+export function moodTagsFor(song: Pick<SubsonicSong, 'moods'>): string[] {
   const moods = Array.isArray(song.moods) ? song.moods : [];
   const names: string[] = [];
+  const seen = new Set<string>();
   for (const mood of moods) {
     const name = typeof mood === 'string' ? mood.trim() : '';
-    if (name && !names.some(n => n.toLowerCase() === name.toLowerCase())) names.push(name);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
   }
-  return names.join(' · ');
+  return names;
+}
+
+export function moodsLabel(song: SubsonicSong): string {
+  return moodTagsFor(song).join(' · ');
 }
 
 export function codecLabel(song: SubsonicSong, showBitrate: boolean): string {

@@ -25,6 +25,7 @@ import { ownedEntityKey } from '@/lib/util/ownedEntityKey';
 import { sameQueueTrack, useTrackPlayStats } from '@/features/playback';
 import { useDragPress } from '@/lib/dnd/useDragPress';
 import { TracklistCell } from '@/ui/tracklist/TracklistCell';
+import { TrackMoodLinks } from '@/ui/TrackMoodLinks';
 import { songCellText } from '@/ui/tracklist/measureColumnContent';
 
 type ContextMenuFn = (
@@ -244,7 +245,7 @@ export const TrackRow = React.memo(function TrackRow({
       case 'mood':
         return (
           <div key="mood" className="track-genre">
-            {moodsLabel(song) || '—'}
+            {moodsLabel(song) ? <TrackMoodLinks song={song} /> : '—'}
           </div>
         );
       case 'playCount':

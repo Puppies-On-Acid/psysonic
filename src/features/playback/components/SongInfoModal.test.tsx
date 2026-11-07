@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
+import { useLocation } from 'react-router';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +25,11 @@ import SongInfoModal from './SongInfoModal';
 import { resetAuthStore, resetPlayerStore } from '@/test/helpers/storeReset';
 import { useAuthStore } from '@/store/authStore';
 import { usePlayerStore } from '@/features/playback/store/playerStore';
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="mood-destination">{location.pathname}</span>;
+}
 
 describe('SongInfoModal server ownership', () => {
   beforeEach(() => {
@@ -99,7 +105,7 @@ describe('SongInfoModal server ownership', () => {
    * The mood row used to come only from the analysis facts, so a file tagged
    * with MOOD/TMOO showed nothing until it had been analysed.
    */
-  it('shows the mood tags the file carries', async () => {
+  it('links each file mood tag directly from Song Information', async () => {
     mocks.getSongForServer.mockResolvedValue({
       id: 'shared',
       serverId: 'srv-owner',
@@ -111,9 +117,20 @@ describe('SongInfoModal server ownership', () => {
     });
 
     usePlayerStore.getState().openSongInfo('shared', 'srv-owner');
-    const view = renderWithProviders(<SongInfoModal />);
+    const view = renderWithProviders(
+      <>
+        <SongInfoModal />
+        <LocationProbe />
+      </>,
+    );
 
-    expect(await view.findByText('Love · Emotional')).toBeInTheDocument();
+    expect(await view.findByRole('button', { name: 'Love' })).toBeInTheDocument();
+    expect(view.getByRole('button', { name: 'Emotional' })).toBeInTheDocument();
+    expect(document.querySelector('.track-moods-cell')).toHaveTextContent('Love · Emotional');
+
+    fireEvent.click(view.getByRole('button', { name: 'Emotional' }));
+    expect(view.getByTestId('mood-destination')).toHaveTextContent('/moods/Emotional');
+    expect(view.queryByText('Owner Song')).not.toBeInTheDocument();
   });
 
   it('keeps the singular label for a single genre', async () => {

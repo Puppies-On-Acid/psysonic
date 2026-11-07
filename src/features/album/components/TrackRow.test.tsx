@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import type { ColDef } from '@/lib/hooks/useTracklistColumns';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { makeSubsonicSong } from '@/test/helpers/factories';
@@ -14,14 +14,20 @@ const columns: ColDef[] = [
 function renderRow(
   onDoubleClickSong?: (song: ReturnType<typeof makeSubsonicSong>) => void,
   onCursorClick?: (song: ReturnType<typeof makeSubsonicSong>) => void,
+  moods?: string[],
 ) {
-  const song = makeSubsonicSong({ id: 'album-song-1', title: 'Album song' });
+  const song = makeSubsonicSong({ id: 'album-song-1', title: 'Album song', moods });
   const onPlaySong = vi.fn();
+  const onToggleSelect = vi.fn();
+  const onDragStart = vi.fn();
+  const visibleCols = moods
+    ? [...columns, { key: 'mood', i18nKey: 'trackMood', minWidth: 80, defaultWidth: 150, required: false }]
+    : columns;
   const { container } = renderWithProviders(
     <TrackRow
       song={song}
       globalIdx={0}
-      visibleCols={columns}
+      visibleCols={visibleCols}
       gridStyle={{}}
       currentTrack={null}
       isPlaying={false}
@@ -34,15 +40,15 @@ function renderRow(
       onRate={vi.fn()}
       onToggleSongStar={vi.fn()}
       onContextMenu={vi.fn()}
-      onToggleSelect={vi.fn()}
-      onDragStart={vi.fn()}
+      onToggleSelect={onToggleSelect}
+      onDragStart={onDragStart}
       setContextMenuSongKey={vi.fn()}
       onCursorClick={onCursorClick}
     />,
   );
   const row = container.querySelector<HTMLElement>('.track-row')!;
   const playButton = container.querySelector<HTMLButtonElement>('.track-row button')!;
-  return { song, onPlaySong, row, playButton };
+  return { song, onPlaySong, onToggleSelect, onDragStart, row, playButton };
 }
 
 describe('TrackRow row click to play', () => {
@@ -105,6 +111,23 @@ describe('TrackRow row click to play', () => {
 
     fireEvent.click(playButton);
     expect(onCursorClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens a file mood without playing, selecting, moving the cursor or starting a drag', () => {
+    const onCursorClick = vi.fn();
+    const { onPlaySong, onToggleSelect, onDragStart } =
+      renderRow(undefined, onCursorClick, ['Dreamy', 'Atmospheric']);
+    const link = screen.getByRole('button', { name: 'Dreamy' });
+
+    fireEvent.mouseDown(link);
+    fireEvent.click(link);
+    fireEvent.doubleClick(link);
+
+    expect(onPlaySong).not.toHaveBeenCalled();
+    expect(onToggleSelect).not.toHaveBeenCalled();
+    expect(onDragStart).not.toHaveBeenCalled();
+    expect(onCursorClick).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Atmospheric' })).toBeInTheDocument();
   });
 
   it('leaves the cursor alone when a click toggles the multi-selection', () => {
