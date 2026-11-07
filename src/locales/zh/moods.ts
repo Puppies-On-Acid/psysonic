@@ -19,4 +19,13 @@ export const moods = {
   viewTabsLabel: "情绪结果",
   tracksEmpty: "未找到具有此情绪的曲目。",
   back: '返回',
+  selectTags: '选择',
+  cancelSelection: '取消',
+  clearSelection: '清除',
+  selectedTagCount_one: '已选择 {{count}} 个标签',
+  selectedTagCount_other: '已选择 {{count}} 个标签',
+  selectionMinimum: '至少选择两个标签以查看组合结果。',
+  viewResults: '查看结果',
+  genreTagLabel: '流派',
+  moodTagLabel: '情绪',
 };

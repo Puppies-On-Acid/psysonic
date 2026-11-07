@@ -5,7 +5,7 @@ import {
   libraryScopeListComposers,
   type LibraryScopePair,
 } from '@/lib/api/library/scopeReads';
-import { libraryGetLabelAlbumCounts, libraryGetMoodAlbumCounts, type LabelAlbumCountRow, type MoodAlbumCountRow } from '@/lib/api/library';
+import { libraryGetGenreAlbumCounts, libraryGetLabelAlbumCounts, libraryGetMoodAlbumCounts, type GenreAlbumCountRow, type LabelAlbumCountRow, type MoodAlbumCountRow } from '@/lib/api/library';
 import { libraryScopePairsForServer } from '@/lib/api/subsonicClient';
 import { albumToAlbum, artistToArtist } from '@/lib/library/advancedSearchLocal';
 import { filterArtistsWithRoleAlbumCredits } from '@/lib/library/composerBrowse';
@@ -34,6 +34,8 @@ const ALL_STATIC_ROUTES = [
   '/now-playing', '/device-sync', '/shared',
 ] as const;
 
+const TAG_EXPLORER_BENCHMARK_SIZES = [2, 5, 10] as const;
+
 const DYNAMIC_ROUTE_TEMPLATES = [
   '/album/:id',
   '/artist/:id',
@@ -44,6 +46,81 @@ const DYNAMIC_ROUTE_TEMPLATES = [
   '/moods/:name?view=tracks',
   '/playlists/:id',
 ] as const;
+
+interface BenchmarkTagCandidate {
+  kind: 'genre' | 'mood';
+  value: string;
+  weight: number;
+}
+
+export function buildTagExplorerBenchmarkRoutes(
+  genreRows: readonly GenreAlbumCountRow[],
+  moodRows: readonly MoodAlbumCountRow[],
+): Pick<BenchmarkRouteResolution, 'routes' | 'skippedRoutes'> {
+  const byKey = new Map<string, BenchmarkTagCandidate>();
+  const add = (
+    kind: BenchmarkTagCandidate['kind'],
+    rows: readonly (GenreAlbumCountRow | MoodAlbumCountRow)[],
+  ) => {
+    for (const row of rows) {
+      const value = row.value.trim();
+      if (!value) continue;
+      const key = `${kind}:\u001f${value.toLocaleLowerCase()}`;
+      const weight = Math.max(
+        Number(row.songCount) || 0,
+        Number(row.albumCount) || 0,
+      );
+      const previous = byKey.get(key);
+      if (previous) {
+        previous.weight += weight;
+      } else {
+        byKey.set(key, { kind, value, weight });
+      }
+    }
+  };
+
+  add('genre', genreRows);
+  add('mood', moodRows);
+
+  const genres = [...byKey.values()]
+    .filter(row => row.kind === 'genre')
+    .sort((a, b) => b.weight - a.weight || a.value.localeCompare(b.value));
+  const moods = [...byKey.values()]
+    .filter(row => row.kind === 'mood')
+    .sort((a, b) => b.weight - a.weight || a.value.localeCompare(b.value));
+
+  const ordered: BenchmarkTagCandidate[] = [];
+  let genreIndex = 0;
+  let moodIndex = 0;
+  while (genreIndex < genres.length || moodIndex < moods.length) {
+    if (genreIndex < genres.length) ordered.push(genres[genreIndex++]);
+    if (moodIndex < moods.length) ordered.push(moods[moodIndex++]);
+  }
+
+  const routes: string[] = [];
+  const skippedRoutes: BenchmarkSkippedRoute[] = [];
+
+  for (const size of TAG_EXPLORER_BENCHMARK_SIZES) {
+    if (ordered.length < size) {
+      skippedRoutes.push({
+        route: `/genres/explore/results (: ${size} tags)`,
+        reason: `only ${ordered.length} distinct indexed genre/mood tags available`,
+      });
+      continue;
+    }
+
+    const params = new URLSearchParams();
+    for (const tag of ordered.slice(0, size)) {
+      params.append('tag', `${tag.kind}:${tag.value}`);
+    }
+    params.set('benchmarkTags', String(size));
+    routes.push(
+      `/genres/explore/results?${params.toString()}`,
+    );
+  }
+
+  return { routes, skippedRoutes };
+}
 
 interface DynamicRouteCandidates {
   albums: SubsonicAlbum[];
@@ -225,10 +302,12 @@ export async function resolveBenchmarkRoutes(scenario: string): Promise<Benchmar
     playlists = usePlaylistStore.getState().playlists;
   }
 
-  const [labels, moods] = await Promise.all([
+  const [labels, moods, genres] = await Promise.all([
     resolveCatalogCounts(auth, libraryGetLabelAlbumCounts),
     resolveCatalogCounts(auth, libraryGetMoodAlbumCounts),
+    resolveCatalogCounts(auth, libraryGetGenreAlbumCounts),
   ]);
+  const explorer = buildTagExplorerBenchmarkRoutes(genres, moods);
 
   const dynamic = buildDynamicBenchmarkRoutes({
     albums: albumRows.map(albumToAlbum),
@@ -242,8 +321,8 @@ export async function resolveBenchmarkRoutes(scenario: string): Promise<Benchmar
   });
 
   return {
-    routes: [...staticRoutes, ...dynamic.routes],
-    skippedRoutes: dynamic.skippedRoutes,
+    routes: [...staticRoutes, ...dynamic.routes, ...explorer.routes],
+    skippedRoutes: [...dynamic.skippedRoutes, ...explorer.skippedRoutes],
     searchQuery,
   };
 }

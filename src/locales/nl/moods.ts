@@ -20,4 +20,13 @@ export const moods = {
   viewTabsLabel: "Stemmingsresultaten",
   tracksEmpty: "Geen nummers gevonden voor deze stemming.",
   back: 'Terug',
+  selectTags: 'Selecteren',
+  cancelSelection: 'Annuleren',
+  clearSelection: 'Wissen',
+  selectedTagCount_one: '{{count}} tag geselecteerd',
+  selectedTagCount_other: '{{count}} tags geselecteerd',
+  selectionMinimum: 'Selecteer minstens twee tags om gecombineerde resultaten te bekijken.',
+  viewResults: 'Resultaten bekijken',
+  genreTagLabel: 'Genre',
+  moodTagLabel: 'Stemming',
 };
