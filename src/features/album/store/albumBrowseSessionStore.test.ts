@@ -14,7 +14,10 @@ import {
   peekAlbumBrowseScrollRestore,
   peekGenreDetailReturnStash,
   peekGenreDetailScrollRestore,
+  peekGenreDetailTabScrollSnapshots,
   stashGenreDetailReturnFilters,
+  stashGenreDetailTabScrollSnapshots,
+  clearGenreDetailTabScrollSnapshots,
   useAlbumBrowseSessionStore,
   clearMoodDetailReturnStash,
   isMoodDetailPath,
@@ -26,7 +29,11 @@ import {
 
 describe('albumBrowseSessionStore', () => {
   beforeEach(() => {
-    useAlbumBrowseSessionStore.setState({ sortByServer: {}, returnStashByKey: {} });
+    useAlbumBrowseSessionStore.setState({
+      sortByServer: {},
+      returnStashByKey: {},
+      genreDetailTabScrollByKey: {},
+    });
   });
 
   it('keeps sort per server for the session', () => {
@@ -126,9 +133,36 @@ describe('albumBrowseSessionStore', () => {
     });
     clearGenreDetailReturnStash('srv-a', 'Rock');
     expect(peekGenreDetailReturnStash('srv-a', 'Rock')).toBeNull();
+  });
+
+  it('keeps genre Albums and Tracks scroll snapshots separately', () => {
+    stashGenreDetailTabScrollSnapshots('srv-a', 'Rock', {
+      albums: {
+        scrollTop: 640,
+        displayCount: 90,
+      },
+      tracks: {
+        scrollTop: 1280,
+        displayCount: 200,
+      },
     });
 
-    it('stashes mood detail leave snapshot separately from album grid surfaces', () => {
+    expect(peekGenreDetailTabScrollSnapshots('srv-a', 'Rock')).toEqual({
+      albums: {
+        scrollTop: 640,
+        displayCount: 90,
+      },
+      tracks: {
+        scrollTop: 1280,
+        displayCount: 200,
+      },
+    });
+
+    clearGenreDetailTabScrollSnapshots('srv-a', 'Rock');
+    expect(peekGenreDetailTabScrollSnapshots('srv-a', 'Rock')).toBeNull();
+  });
+
+  it('stashes mood detail leave snapshot separately from album grid surfaces', () => {
     stashMoodDetailReturnFilters('srv-a', 'Dreamy', {
       ...DEFAULT_ALBUM_BROWSE_RETURN_FILTERS,
       scrollTop: 720,

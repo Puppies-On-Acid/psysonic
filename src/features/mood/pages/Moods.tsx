@@ -11,20 +11,26 @@ import { deriveLibraryBrowseIndexScopes } from '@/lib/library/libraryBrowseScope
 import { genreColor } from '@/lib/library/genreColor';
 import { useAuthStore } from '@/store/authStore';
 import { useLibrarySyncRevision } from '@/store/offlineLocalLibrarySyncRevision';
-import TagCatalogToolbar, { type TagCatalogSort } from '@/ui/TagCatalogToolbar';
-import { readTagCatalogReturnState, tagCatalogPopularityLog, type CatalogReturnState } from '@/lib/library/tagCatalogSession';
+import TagCatalogDiscoveryToolbar from '@/ui/TagCatalogDiscoveryToolbar';
+import {
+  TagExplorerSelectionBar,
+  tagExplorerTagKey,
+  useTagExplorerSelectionStore,
+} from '@/features/tagExplorer';
+import {
+  consumeTagCatalogReturnState,
+  filterAndSortTagCatalog,
+  readTagCatalogSort,
+  storeTagCatalogReturnState,
+  writeTagCatalogSort,
+  type TagCatalogSort,
+} from '@/lib/library/tagCatalogDiscovery';
 
 const RETURN_STATE_KEY = 'moods-return-state';
 const SORT_KEY = 'moods-sort';
 
 const FONT_MIN_REM = 0.78;
 const FONT_MAX_REM = 1.7;
-
-function readSort(): TagCatalogSort {
-  return sessionStorage.getItem(SORT_KEY) === 'alphabetical'
-    ? 'alphabetical'
-    : 'popularity';
-}
 
 function mergeMoodCatalogs(
   catalogs: readonly MoodAlbumCountRow[][],
@@ -59,8 +65,14 @@ function mergeMoodCatalogs(
 export default function Moods() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [search, setSearch] = useState(() => readTagCatalogReturnState(RETURN_STATE_KEY)?.search ?? '');
-  const [sort, setSort] = useState<TagCatalogSort>(readSort);
+  const selectionActive = useTagExplorerSelectionStore(s => s.active);
+  const selectionOrigin = useTagExplorerSelectionStore(s => s.origin);
+  const selectedTags = useTagExplorerSelectionStore(s => s.tags);
+  const beginSelection = useTagExplorerSelectionStore(s => s.begin);
+  const toggleSelection = useTagExplorerSelectionStore(s => s.toggle);
+  const removeSelection = useTagExplorerSelectionStore(s => s.remove);
+  const clearSelection = useTagExplorerSelectionStore(s => s.clear);
+  const cancelSelection = useTagExplorerSelectionStore(s => s.cancel);
 
   const musicLibraryFilterVersion = useAuthStore(
     s => s.musicLibraryFilterVersion,
@@ -72,6 +84,9 @@ export default function Moods() {
 
   const librarySyncRevision = useLibrarySyncRevision();
 
+  const [returnState] = useState(() => consumeTagCatalogReturnState(RETURN_STATE_KEY));
+  const [search, setSearch] = useState(returnState?.search ?? '');
+  const [sort, setSort] = useState<TagCatalogSort>(() => readTagCatalogSort(SORT_KEY));
   const [rawMoods, setRawMoods] = useState<MoodAlbumCountRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -129,31 +144,25 @@ export default function Moods() {
     librarySyncRevision,
   ]);
 
-  const catalogMoods = rawMoods;
-  const searchActive = search.trim().length > 0;
+  const moods = useMemo(
+    () => filterAndSortTagCatalog(rawMoods, search, sort),
+    [rawMoods, search, sort],
+  );
 
-  const moods = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    const filtered = query
-      ? catalogMoods.filter(mood => mood.value.toLocaleLowerCase().includes(query))
-      : [...catalogMoods];
-
-    return filtered.sort((a, b) => (
-      sort === 'alphabetical'
-        ? a.value.localeCompare(b.value)
-        : b.albumCount - a.albumCount || a.value.localeCompare(b.value)
-    ));
-  }, [catalogMoods, search, sort]);
-
-  const maxLog = useMemo(() => tagCatalogPopularityLog(catalogMoods), [catalogMoods]);
+  const maxLog = useMemo(() => {
+    const maxAlbumCount = rawMoods.reduce(
+      (max, mood) => Math.max(max, mood.albumCount),
+      2,
+    );
+    return Math.log(maxAlbumCount);
+  }, [rawMoods]);
 
   useEffect(() => {
-    if (loading) return;
+    writeTagCatalogSort(SORT_KEY, sort);
+  }, [sort]);
 
-    const saved = readTagCatalogReturnState(RETURN_STATE_KEY);
-    if (!saved) return;
-
-    sessionStorage.removeItem(RETURN_STATE_KEY);
+  useEffect(() => {
+    if (loading || !returnState) return;
 
     requestAnimationFrame(() => {
       const el = document.getElementById(
@@ -161,28 +170,24 @@ export default function Moods() {
       );
 
       if (el) {
-        el.scrollTop = saved.scrollTop;
+        el.scrollTop = returnState.scrollTop;
       }
     });
-  }, [loading]);
-
-  const handleSortChange = (next: TagCatalogSort) => {
-    setSort(next);
-    sessionStorage.setItem(SORT_KEY, next);
-  };
+  }, [loading, returnState]);
 
   const handleMoodClick = (moodValue: string) => {
+    if (selectionActive) {
+      toggleSelection({ kind: 'mood', value: moodValue });
+      return;
+    }
     const el = document.getElementById(
       APP_MAIN_SCROLL_VIEWPORT_ID,
     );
 
-    sessionStorage.setItem(
-      RETURN_STATE_KEY,
-      JSON.stringify({
-        search,
-        scrollTop: el?.scrollTop ?? 0,
-      } satisfies CatalogReturnState),
-    );
+    storeTagCatalogReturnState(RETURN_STATE_KEY, {
+      search,
+      scrollTop: el?.scrollTop ?? 0,
+    });
 
     navigate(
       `/moods/${encodeURIComponent(moodValue)}`,
@@ -208,30 +213,54 @@ export default function Moods() {
           {t('moods.title', )}
         </h1>
 
-        {!loading && catalogMoods.length > 0 && (
+        {!loading && rawMoods.length > 0 && (
           <span className="psy-page-heading__count">
             <span aria-hidden="true">–</span>
 
-            {searchActive
-              ? t('moods.filteredCount', { visible: moods.length, total: catalogMoods.length })
-              : `${catalogMoods.length} ${t('moods.moodCount', { count: catalogMoods.length })}`}
+            {search.trim()
+              ? t('moods.filteredCount', { visible: moods.length, total: rawMoods.length })
+              : `${rawMoods.length} ${t('moods.moodCount', { count: rawMoods.length })}`}
           </span>
         )}
       </div>
 
-      {!loading && catalogMoods.length > 0 && (
-        <TagCatalogToolbar
-          query={search}
-          onQueryChange={setSearch}
-          sort={sort}
-          onSortChange={handleSortChange}
+      {!loading && rawMoods.length > 0 && (
+        <TagCatalogDiscoveryToolbar
+          search={search}
+          onSearchChange={setSearch}
           searchPlaceholder={t('moods.searchPlaceholder')}
           searchAriaLabel={t('moods.searchLabel')}
           clearSearchLabel={t('moods.clearSearch')}
-          sortAriaLabel={t('moods.sortLabel')}
+          sort={sort}
+          onSortChange={setSort}
           popularityLabel={t('moods.sortPopularity')}
           alphabeticalLabel={t('moods.sortAlphabetical')}
+          sortTooltip={t('moods.sortTooltip')}
           benchmarkKind="moods"
+          selectionMode={selectionActive}
+          onToggleSelectionMode={() => {
+            if (selectionActive) cancelSelection();
+            else beginSelection('moods');
+          }}
+          selectLabel={t('moods.selectTags')}
+          cancelSelectionLabel={t('moods.cancelSelection')}
+        />
+      )}
+
+      {selectionActive && (
+        <TagExplorerSelectionBar
+          origin={selectionOrigin ?? 'moods'}
+          tags={selectedTags}
+          onRemove={removeSelection}
+          onClear={clearSelection}
+          onCancel={cancelSelection}
+          selectedCountLabel={t('moods.selectedTagCount', { count: selectedTags.length })}
+          clearLabel={t('moods.clearSelection')}
+          cancelLabel={t('moods.cancelSelection')}
+          viewResultsLabel={t('moods.viewResults')}
+          minimumLabel={t('moods.selectionMinimum')}
+          genreLabel={t('moods.genreTagLabel')}
+          moodLabel={t('moods.moodTagLabel')}
         />
       )}
 
@@ -241,13 +270,13 @@ export default function Moods() {
         </p>
       )}
 
-      {!loading && catalogMoods.length === 0 && (
+      {!loading && rawMoods.length === 0 && (
         <p className="loading-text">
           {t('moods.empty', )}
         </p>
       )}
 
-      {!loading && catalogMoods.length > 0 && moods.length === 0 && searchActive && (
+      {!loading && rawMoods.length > 0 && moods.length === 0 && (
         <p className="loading-text">
           {t('moods.noSearchResults', { query: search.trim() })}
         </p>
@@ -272,7 +301,14 @@ export default function Moods() {
               <button
                 key={mood.value}
                 type="button"
-                className="genre-pill"
+                className={`genre-pill${selectionActive && selectedTags.some(
+                  tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'mood', value: mood.value }),
+                ) ? ' genre-pill--selected' : ''}`}
+                aria-pressed={selectionActive
+                  ? selectedTags.some(
+                      tag => tagExplorerTagKey(tag) === tagExplorerTagKey({ kind: 'mood', value: mood.value }),
+                    )
+                  : undefined}
                 style={
                   {
                     '--genre-color': color,

@@ -23,6 +23,12 @@ interface Props {
   onLoadMore: () => void;
   /** Show a BPM column (Advanced Search when the BPM filter is active). */
   showBpm?: boolean;
+  /** Optional bulk selection; omitted by normal Tracks/Search callers. */
+  selection?: {
+    isSelected: (song: SubsonicSong) => boolean;
+    onToggle: (song: SubsonicSong, rowIndex: number, shift: boolean) => void;
+    label: (song: SubsonicSong, selected: boolean) => string;
+  };
 }
 
 /**
@@ -35,7 +41,7 @@ interface Props {
  * Columns follow the track tables' spreadsheet model (widths, autofit, moving,
  * menu); the list loads page by page, so its headers do not sort.
  */
-export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore, showBpm }: Props) {
+export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore, showBpm, selection }: Props) {
   const { t } = useTranslation();
   const trackListCoversOn = useTrackListCoverArtEnabled('pages');
   const onLoadMoreRef = useRef(onLoadMore);
@@ -123,6 +129,10 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
             rowIndex={i}
             cursorRowId={cursor.cursorIndex === i ? cursor.cursorRowId : undefined}
             onCursorClick={cursor.setCursorFromClick}
+            selectionMode={!!selection}
+            selected={selection?.isSelected(song) ?? false}
+            onToggleSelection={(rowIndex, shift) => selection?.onToggle(song, rowIndex, shift)}
+            selectionLabel={selection ? selection.label(song, selection.isSelected(song)) : undefined}
           />
         ))}
       </TracklistViewport>
