@@ -43,6 +43,15 @@ interface Props {
  */
 export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore, showBpm, selection }: Props) {
   const { t } = useTranslation();
+  const selectionMode = !!selection;
+  const columns = useMemo(
+    () => selectionMode
+      ? SONG_LIST_COLUMNS.map(col => col.key === 'actions'
+        ? { ...col, minWidth: col.minWidth + 24, defaultWidth: col.defaultWidth + 24 }
+        : col)
+      : SONG_LIST_COLUMNS,
+    [selectionMode],
+  );
   const trackListCoversOn = useTrackListCoverArtEnabled('pages');
   const onLoadMoreRef = useRef(onLoadMore);
   // React Compiler refs rule: ref kept in sync with the latest value for use in effects/handlers/cleanup; not render data.
@@ -62,7 +71,7 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
   const {
     visibleCols, colWidths, colVisible, setColumnWidth, startResize, moveColumn,
     toggleColumn, resetColumns, tracklistRef,
-  } = useTracklistColumns(SONG_LIST_COLUMNS, SONG_LIST_STORAGE_KEY);
+  } = useTracklistColumns(columns, SONG_LIST_STORAGE_KEY);
   // BPM only where the page asks for it; the column keeps its width meanwhile.
   const displayCols = useMemo(
     () => (showBpm ? visibleCols : visibleCols.filter(c => c.key !== 'bpm')),
@@ -106,7 +115,7 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
       }}
       onReorder={moveColumn}
       menu={{
-        allColumns: showBpm ? SONG_LIST_COLUMNS : SONG_LIST_COLUMNS.filter(c => c.key !== 'bpm'),
+        allColumns: showBpm ? columns : columns.filter(c => c.key !== 'bpm'),
         colVisible,
         toggleColumn,
         resetColumns,
@@ -129,9 +138,9 @@ export default function PagedSongList({ songs, hasMore, loadingMore, onLoadMore,
             rowIndex={i}
             cursorRowId={cursor.cursorIndex === i ? cursor.cursorRowId : undefined}
             onCursorClick={cursor.setCursorFromClick}
-            selectionMode={!!selection}
+            selectionMode={selectionMode}
             selected={selection?.isSelected(song) ?? false}
-            onToggleSelection={(rowIndex, shift) => selection?.onToggle(song, rowIndex, shift)}
+            onToggleSelection={selection ? (rowIndex, shift) => selection.onToggle(song, rowIndex, shift) : undefined}
             selectionLabel={selection ? selection.label(song, selection.isSelected(song)) : undefined}
           />
         ))}
