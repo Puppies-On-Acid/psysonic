@@ -24,7 +24,10 @@ pub struct RuleEvaluateRequest {
 
 /// Strictly on-demand service entry point. Only obtains a dedicated heavy-query
 /// SQLite reader after cheap input checks. No server I/O, writes or sync activity.
-pub fn run(store: &LibraryStore, request: &RuleEvaluateRequest) -> Result<evaluator::RulePage, String> {
+pub fn run(
+    store: &LibraryStore,
+    request: &RuleEvaluateRequest,
+) -> Result<evaluator::RulePage, String> {
     let document = validate_evaluate_request(request)?;
     // The store helper expects rusqlite::Result<R>; R is the evaluator's
     // Result<RulePage, String>. Returning that as a value preserves useful
