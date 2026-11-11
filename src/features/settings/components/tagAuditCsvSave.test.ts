@@ -35,11 +35,15 @@ describe('Library tag audit native CSV save', () => {
       filters: [{ name: 'CSV', extensions: ['csv'] }],
     });
     expect(nativeMocks.writeFile).toHaveBeenCalledTimes(1);
-    const [path, bytes] = nativeMocks.writeFile.mock.calls[0] as [string, Uint8Array];
+    const [path, writtenBytes] = nativeMocks.writeFile.mock.calls[0] as [string, Uint8Array];
     expect(path).toBe('C:\\Exports\\chosen.csv');
-    expect(bytes).toBeInstanceOf(Uint8Array);
+    // Tauri/Vitest can provide a typed array from another JS realm, making
+    // instanceof Uint8Array fail even though the written bytes are valid.
+    expect(ArrayBuffer.isView(writtenBytes)).toBe(true);
+    const bytes = Uint8Array.from(writtenBytes);
+    expect(Array.from(bytes.subarray(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    // TextDecoder strips a leading UTF-8 BOM by default.
     const csv = new TextDecoder().decode(bytes);
-    expect(csv).toMatch(/^\uFEFF/);
     expect(csv).toContain('"Chosen, ""Album"""');
     expect(csv).toContain('"a1"');
     expect(csv).not.toContain('a2');
