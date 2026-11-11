@@ -6,8 +6,8 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
 use super::{
-    validate_rule_document, RuleCombinator, RuleDocument, RuleEntity, RuleNode,
-    RuleOperator, RuleValue,
+    validate_rule_document, RuleCombinator, RuleDocument, RuleEntity, RuleNode, RuleOperator,
+    RuleValue,
 };
 use crate::dto::LibraryScopePair;
 use crate::scope_merge::normalize_scope_pairs;
@@ -39,9 +39,7 @@ struct CompiledQuery {
 
 fn requires_tag_projection(node: &RuleNode) -> bool {
     match node {
-        RuleNode::Group { children, .. } => {
-            children.iter().any(requires_tag_projection)
-        }
+        RuleNode::Group { children, .. } => children.iter().any(requires_tag_projection),
         RuleNode::Predicate { field, .. } => matches!(
             field.as_str(),
             "genreStatus"
@@ -451,10 +449,34 @@ mod tests {
         let conn = fixture();
         ready(&conn);
         add_track(&conn, "s1", "l1", Some("empty"), "e1", None, None);
-        add_track(&conn, "s1", "l1", Some("mixed"), "m1", Some("Rock"), Some("Bright"));
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("mixed"),
+            "m1",
+            Some("Rock"),
+            Some("Bright"),
+        );
         add_track(&conn, "s1", "l1", Some("mixed"), "m2", None, None);
-        add_track(&conn, "s1", "l1", Some("done"), "d1", Some("Rock"), Some("Bright"));
-        add_track(&conn, "s1", "l1", Some("album-genre"), "a1", None, Some("Bright"));
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("done"),
+            "d1",
+            Some("Rock"),
+            Some("Bright"),
+        );
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("album-genre"),
+            "a1",
+            None,
+            Some("Bright"),
+        );
         conn.execute(
             "INSERT INTO album VALUES ('s1', 'album-genre', 'Album Genre',
                                       'The Artist', 'Jazz', 1999)",
@@ -490,22 +512,11 @@ mod tests {
             Some("Bright"),
         );
         add_track(&conn, "s1", "l2", Some("same"), "b", None, None);
-        add_track(
-            &conn,
-            "s2",
-            "l1",
-            Some("same"),
-            "c",
-            None,
-            Some("Bright"),
-        );
+        add_track(&conn, "s2", "l1", Some("same"), "c", None, Some("Bright"));
         add_track(&conn, "s1", "l1", Some("deleted"), "d", None, None);
         add_track(&conn, "s1", "l1", None, "orphan", None, None);
-        conn.execute(
-            "UPDATE track SET deleted = 1 WHERE id = 'd'",
-            [],
-        )
-        .unwrap();
+        conn.execute("UPDATE track SET deleted = 1 WHERE id = 'd'", [])
+            .unwrap();
         let scopes = [scope("s1", None), scope("s2", None)];
         let result = evaluate_page(&conn, &missing_preset(), &scopes, 50, 0).unwrap();
         assert_eq!(result.items.len(), 2);
@@ -521,14 +532,8 @@ mod tests {
             .items
             .iter()
             .all(|row| row.album_id.as_deref() == Some("same")));
-        let only_l1 = evaluate_page(
-            &conn,
-            &missing_preset(),
-            &[scope("s1", Some("l1"))],
-            50,
-            0,
-        )
-        .unwrap();
+        let only_l1 =
+            evaluate_page(&conn, &missing_preset(), &[scope("s1", Some("l1"))], 50, 0).unwrap();
         assert!(only_l1.items.is_empty());
     }
 
@@ -590,11 +595,8 @@ mod tests {
             Some(""),
         );
         add_track(&conn, "s1", "l1", Some("three"), "deleted", None, None);
-        conn.execute(
-            "UPDATE track SET deleted = 1 WHERE id = 'deleted'",
-            [],
-        )
-        .unwrap();
+        conn.execute("UPDATE track SET deleted = 1 WHERE id = 'deleted'", [])
+            .unwrap();
         let doc = rule(json!({
             "version": 1, "entity": "track",
             "root": {"kind": "group", "combinator": "any", "children": [
@@ -612,9 +614,11 @@ mod tests {
     fn gating_blocks_unindexed_tags_but_allows_metadata_only_queries() {
         let conn = fixture();
         add_track(&conn, "s1", "l1", Some("one"), "t1", None, None);
-        assert!(evaluate_page(&conn, &missing_preset(), &[scope("s1", None)], 50, 0)
-            .unwrap_err()
-            .contains("backfill"));
+        assert!(
+            evaluate_page(&conn, &missing_preset(), &[scope("s1", None)], 50, 0)
+                .unwrap_err()
+                .contains("backfill")
+        );
 
         let simple = rule(json!({
             "version": 1, "entity": "track",
@@ -729,14 +733,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(matched_ids(&not_contains), vec!["two"]);
-        let missing = evaluate_page(
-            &conn,
-            &predicate("isMissing", None),
-            &scopes,
-            10,
-            0,
-        )
-        .unwrap();
+        let missing = evaluate_page(&conn, &predicate("isMissing", None), &scopes, 10, 0).unwrap();
         assert_eq!(matched_ids(&missing), vec!["one"]);
     }
 }
