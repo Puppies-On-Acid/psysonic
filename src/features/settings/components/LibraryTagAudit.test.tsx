@@ -11,10 +11,20 @@ vi.mock('@/lib/api/library/tagAudit', () => ({
   libraryTagAudit: vi.fn(),
 }));
 
+const exportMocks = vi.hoisted(() => ({
+  saveTagAuditCsv: vi.fn(),
+  showToast: vi.fn(),
+}));
+
+vi.mock('./tagAuditCsvSave', () => ({ saveTagAuditCsv: exportMocks.saveTagAuditCsv }));
+vi.mock('@/lib/dom/toast', () => ({ showToast: exportMocks.showToast }));
+
 describe('Settings library tag audit', () => {
   beforeEach(() => {
     resetAllStores();
     vi.mocked(libraryTagAudit).mockReset();
+    exportMocks.saveTagAuditCsv.mockReset().mockResolvedValue('saved');
+    exportMocks.showToast.mockReset();
     useAuthStore.setState({
       servers: [{
         id: 's1', name: 'Test Server', url: 'https://example.invalid',
@@ -50,5 +60,29 @@ describe('Settings library tag audit', () => {
     await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(await screen.findByText('An Album')).toBeInTheDocument();
     expect(libraryTagAudit).toHaveBeenCalledTimes(1);
+
+    // Export uses the already captured snapshot, never starts a new audit.
+    await user.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+    await waitFor(() => expect(exportMocks.saveTagAuditCsv).toHaveBeenCalledWith(
+      [expect.objectContaining({ albumId: 'a1' })],
+      'Save library tag audit CSV',
+    ));
+    expect(exportMocks.showToast).toHaveBeenCalledWith('CSV saved successfully.', 2800, 'success');
+    expect(libraryTagAudit).toHaveBeenCalledTimes(1);
+
+    // Cancelling the file picker should be silent and should not suggest a save.
+    exportMocks.showToast.mockClear();
+    exportMocks.saveTagAuditCsv.mockResolvedValueOnce('cancelled');
+    await user.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+    await waitFor(() => expect(exportMocks.saveTagAuditCsv).toHaveBeenCalledTimes(2));
+    expect(exportMocks.showToast).not.toHaveBeenCalled();
+
+    // Failed saves report an error and permit another attempt.
+    exportMocks.saveTagAuditCsv.mockRejectedValueOnce(new Error('access denied'));
+    await user.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+    await waitFor(() => expect(exportMocks.showToast).toHaveBeenCalledWith(
+      'Could not save CSV. Check the destination and try again.', 4000, 'error',
+    ));
+    expect(screen.getByRole('button', { name: 'Export filtered CSV' })).toBeEnabled();
   });
 });

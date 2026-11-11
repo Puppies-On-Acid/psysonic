@@ -2,7 +2,7 @@
 
 Base: Psysonic upstream `main` at `242bd6fc99832b49bb26db62d4f8fdaa86ad6345`.
 Branch: `feat/library-tag-audit`.
-Status: **implementation candidate, unverified** until Windows builds/tests/benchmarks and owner smoke testing.
+Status: **implementation candidate**. Owner-reported manual audit smoke passed on one full library (~3 seconds, accurate classifications, search/filter and album navigation) at `81bc113a`. CSV native-save correction is pending re-test on its new HEAD; multi-library scope, comparative runtime benchmark and independent review remain pending.
 
 ## Approved behavior (2026-11-10)
 
@@ -14,7 +14,7 @@ Status: **implementation candidate, unverified** until Windows builds/tests/benc
   - **Missing**: zero tagged tracks (and for genres, no album-level genre).
   - **Partial**: some, but not all, tracks have tags; for genres, an album-level genre with untagged tracks also qualifies.
   - **Complete**: every track has at least one indexed tag (irrespective of album-level metadata).
-- Include summary counts (missing genre, partial genre, missing mood, partial mood, both incomplete), results table with album links, search/filter/sort, and CSV export of the currently filtered result set.
+- Include summary counts (missing genre, partial genre, missing mood, partial mood, both incomplete), results table with album links, search/filter/sort, and CSV export of the currently filtered result set via the native Save dialog, with save-success/failure feedback.
 - The snapshot is kept **in app memory only** for this session, not stored on disk. Results are explicitly stale after subsequent synchronization or selection changes; rerun to refresh.
 
 ## Data behavior and constraints
@@ -24,7 +24,7 @@ Status: **implementation candidate, unverified** until Windows builds/tests/benc
 - At audit time, both genre and mood projection migrations must be completed. This protects against false negatives during first-time tag backfill. The audit can still reflect a not-yet-finished ordinary library synchronization; explain this in the UI.
 - Album-level genre presence comes from the local `album.genre` projection. Track-level genre and mood presence comes from the `track_genre` and `track_mood` projections.
 - Results are explicitly snapshots, not automatically refreshed on navigation or background sync. Large, all-missing libraries will return many results on the single user-triggered query; the UI paginates rendering, not backend transmission.
-- CSV exports only filtered affected-album rows and quotes/sanitizes fields against spreadsheet formula execution. No server URL, passwords, library paths, or raw track metadata is included.
+- CSV exports only filtered affected-album rows and quotes/sanitizes fields against spreadsheet formula execution. No server URL, passwords, library paths, or raw track metadata is included. The picker uses existing `@tauri-apps/plugin-dialog` and `@tauri-apps/plugin-fs` permissions; cancelled saves perform no filesystem write.
 
 ## IPC contract
 

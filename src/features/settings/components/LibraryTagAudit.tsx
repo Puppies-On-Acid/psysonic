@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
+import { showToast } from '@/lib/dom/toast';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
 import { useAuthStore } from '@/store/authStore';
 import { libraryTagAudit, type TagAuditAlbum, type TagAuditResponse, type TagAuditStatus } from '@/lib/api/library';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
-import { auditAlbumsCsv, filterAndSortAuditAlbums, type TagAuditFilter, type TagAuditSort } from './tagAuditPresentation';
+import { filterAndSortAuditAlbums, type TagAuditFilter, type TagAuditSort } from './tagAuditPresentation';
+import { saveTagAuditCsv } from './tagAuditCsvSave';
 
 interface Snapshot {
   result: TagAuditResponse;
@@ -32,6 +34,7 @@ export default function LibraryTagAudit() {
   const location = useLocation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(lastSnapshot);
   const [isRunning, setIsRunning] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TagAuditFilter>('all');
@@ -60,7 +63,7 @@ export default function LibraryTagAudit() {
   const serverName = (id: string) => servers.find(server => server.id === id)?.name || id;
 
   const run = async () => {
-    if (isRunning) return;
+    if (isRunning || isExporting) return;
     const scope = currentScope;
     if (scope.pairs.length === 0) {
       setError(t('settings.tagAuditNoScope'));
@@ -91,17 +94,21 @@ export default function LibraryTagAudit() {
     }
   };
 
-  const exportCsv = () => {
-    if (!snapshot) return;
-    const csv = auditAlbumsCsv(results);
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'library-tag-audit.csv';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+  const exportCsv = async () => {
+    if (!snapshot || isRunning || isExporting) return;
+    setIsExporting(true);
+    try {
+      const result = await saveTagAuditCsv(results, t('settings.tagAuditExportDialogTitle'));
+      if (result === 'saved') {
+        showToast(t('settings.tagAuditExportSuccess'), 2800, 'success');
+      }
+      // Cancelling the native Save dialog is not an error.
+    } catch (err) {
+      console.error('[library-tag-audit] CSV export failed', err);
+      showToast(t('settings.tagAuditExportFailed'), 4000, 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -111,17 +118,17 @@ export default function LibraryTagAudit() {
           {t('settings.tagAuditDescription')}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" className="btn btn-surface" disabled={isRunning} onClick={() => void run()}>
+          <button type="button" className="btn btn-surface" disabled={isRunning || isExporting} onClick={() => void run()}>
             {isRunning ? t('settings.tagAuditRunning') : t('settings.tagAuditRun')}
           </button>
           <button type="button" className="btn btn-ghost"
-            disabled={!snapshot || isRunning}
+            disabled={!snapshot || isRunning || isExporting}
             onClick={() => setShowResults(value => !value)}>
             {t('settings.tagAuditViewResults')}
           </button>
           {snapshot && <button type="button" className="btn btn-ghost"
-            disabled={isRunning} onClick={exportCsv}>
-            {t('settings.tagAuditExport')}
+            disabled={isRunning || isExporting} onClick={() => void exportCsv()}>
+            {isExporting ? t('settings.tagAuditExporting') : t('settings.tagAuditExport')}
           </button>}
         </div>
         {error && <p role="alert" style={{ color: 'var(--danger, var(--text-primary))', fontSize: 13 }}>{error}</p>}
