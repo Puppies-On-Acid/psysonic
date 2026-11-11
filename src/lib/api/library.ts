@@ -14,4 +14,5 @@ export * from './library/scopeReads';
 export * from './library/sync';
 export * from './library/stats';
 export * from './library/tagAudit';
+export * from './library/libraryRules';
 export * from './library/events';
