@@ -1,4 +1,5 @@
 import type { TagAuditAlbum } from '@/lib/api/library';
+import { csvCell } from '../utils/csvCell';
 
 export type TagAuditFilter =
   | 'all' | 'genreMissing' | 'genrePartial'
@@ -42,13 +43,6 @@ export function filterAndSortAuditAlbums(
       || a.serverId.localeCompare(b.serverId)
       || a.albumId.localeCompare(b.albumId);
   });
-}
-
-/** Quote every field, and protect exported metadata from CSV formula injection. */
-function csvCell(value: string | number | boolean | null): string {
-  let text = String(value ?? '');
-  if (/^\s*[=+\-@\t\r]/.test(text)) text = "'" + text;
-  return '"' + text.replace(/"/g, '""') + '"';
 }
 
 export function auditAlbumsCsv(albums: readonly TagAuditAlbum[]): string {
