@@ -58,10 +58,13 @@ describe('Library Rules immutable condition builder actions', () => {
     expect(appendLibraryRuleNode(original, [99], 'group')).toBe(original);
     expect(removeLibraryRuleNode(original, [99])).toBe(original);
     let depth = original;
+    let path: number[] = [];
     for (let i = 0; i < MAX_LIBRARY_RULE_DEPTH - 2; i += 1) {
-      depth = appendLibraryRuleNode(depth, Array(i).fill(2), 'group');
+      depth = appendLibraryRuleNode(depth, path, 'group');
+      path = [...path, i === 0 ? 2 : 1];
     }
-    expect(canAppendLibraryRuleNode(depth, [2, 1, 1, 1], 'group')).toBe(false);
+    expect(libraryRuleGroupAt(depth, path)).not.toBeNull();
+    expect(canAppendLibraryRuleNode(depth, path, 'group')).toBe(false);
 
     let full = original;
     while (libraryRuleNodeCount(full.root) < MAX_LIBRARY_RULE_NODES) {

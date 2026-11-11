@@ -69,6 +69,25 @@ describe('Library Rules condition builder', () => {
     expect(validateLibraryRuleDocument(last)).toEqual([]);
   });
 
+  it('removes value properties entirely when switching to presence operators', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<ControlledBuilder onChange={onChange} />);
+    await user.click(screen.getByRole('button', { name: 'Add condition' }));
+    const operators = screen.getAllByRole('combobox', { name: 'Operator' });
+    await user.selectOptions(operators[2], 'contains');
+    expect(screen.getByRole('alert')).toHaveTextContent('condition errors');
+    await user.type(screen.getByRole('textbox', { name: 'Value' }), 'Jazz');
+    await user.selectOptions(operators[2], 'isPresent');
+    const last = onChange.mock.lastCall?.[0] as LibraryRuleDocument;
+    expect(last.root.children[2]).toEqual({
+      kind: 'predicate', field: 'albumName', operator: 'isPresent',
+    });
+    expect(Object.hasOwn(last.root.children[2], 'value')).toBe(false);
+    expect(validateLibraryRuleDocument(last)).toEqual([]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('resets cross-entity conditions safely when switching to track rules', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();

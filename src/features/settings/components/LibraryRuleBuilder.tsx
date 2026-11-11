@@ -69,12 +69,14 @@ function PredicateEditor({
   };
   const updateOperator = (operator: LibraryRuleOperator) => {
     if (!operators.includes(operator)) return;
-    onReplace(path, {
-      ...node,
-      operator,
-      ...(!NO_VALUE.has(operator) ? { value: node.value ?? defaultValue(selected) } : {}),
-      ...(NO_VALUE.has(operator) ? { value: undefined } : {}),
-    });
+    // Presence operators must OMIT the value key. An own property with
+    // undefined fails the strict frontend validator before IPC.
+    onReplace(path, NO_VALUE.has(operator)
+      ? { kind: 'predicate', field: node.field, operator }
+      : {
+        kind: 'predicate', field: node.field, operator,
+        value: node.value ?? defaultValue(selected),
+      });
   };
   const updateValue = (value: LibraryRuleValue) => {
     onReplace(path, { ...node, value });
