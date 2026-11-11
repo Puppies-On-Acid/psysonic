@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Shuffle, Star } from 'lucide-react';
+import { ClipboardCheck, Shuffle, Star } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { MIX_MIN_RATING_FILTER_MAX_STARS } from '@/store/authStoreDefaults';
 import SettingsSubSection from '@/features/settings/components/SettingsSubSection';
@@ -8,6 +8,7 @@ import { SettingsGroup } from '@/features/settings/components/SettingsGroup';
 import { SettingsToggle } from '@/features/settings/components/SettingsToggle';
 import { SettingsSubCard, SettingsField } from '@/features/settings/components/SettingsSubCard';
 import StarRating from '@/ui/StarRating';
+import LibraryTagAudit from '@/features/settings/components/LibraryTagAudit';
 import AnalyticsStrategySection from '@/features/settings/components/AnalyticsStrategySection';
 import { SmartPlaylistCustomFieldsSection } from '@/features/settings/components/SmartPlaylistCustomFieldsSection';
 const AUDIOBOOK_GENRES_DISPLAY = ['Hörbuch', 'Hoerbuch', 'Hörspiel', 'Hoerspiel', 'Audiobook', 'Audio Book', 'Spoken Word', 'Spokenword', 'Podcast', 'Kapitel', 'Thriller', 'Krimi', 'Speech', 'Fantasy', 'Comedy', 'Literature'];
@@ -19,6 +20,10 @@ export function LibraryTab() {
 
   return (
     <>
+      <SettingsSubSection title={t('settings.tagAuditTitle')} icon={<ClipboardCheck size={16} />}>
+        <LibraryTagAudit />
+      </SettingsSubSection>
+
       <AnalyticsStrategySection />
 
       {/* Random Mix Blacklist */}

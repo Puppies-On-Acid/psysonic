@@ -75,6 +75,7 @@ export const SETTINGS_INDEX: SearchIndexEntry[] = [
   { tab: 'servers',        titleKey: 'settings.servers',                  keywords: 'local library index sync resync verify integrity offline delta background sqlite search' },
   { tab: 'servers',        titleKey: 'settings.audiomuseTitle',           keywords: 'audiomuse audio muse navidrome plugin instant mix similar songs lucky mix' },
   { tab: 'servers',        titleKey: 'settings.streamQualityTitle',       keywords: 'streaming quality bitrate cap transcode format mp3 opus aac navidrome address remote bandwidth' },
+  { tab: 'library',        titleKey: 'settings.tagAuditTitle', keywords: 'library maintenance metadata tag audit missing untagged partial genre mood export csv' },
   { tab: 'library',        titleKey: 'settings.analyticsStrategyTitle',   keywords: 'analytics strategy analysis bpm enrichment waveform lazy advanced library backfill' },
   { tab: 'library',        titleKey: 'settings.randomMixTitle',           keywords: 'random mix blacklist genre keywords filter audiobook' },
   { tab: 'library',        titleKey: 'settings.smartPlaylistCustomFieldsTitle', keywords: 'smart playlist custom field tag role navidrome query builder' },
