@@ -49,6 +49,8 @@ export const commands = {
 	 *  Deliberately does not merge equivalent albums/artists between scopes.
 	 */
 	libraryScopeStatistics: (request: LibraryStatisticsRequest) => typedError<LibraryStatisticsDto, string>(__TAURI_INVOKE("library_scope_statistics", { request })),
+	/**  Read-only, explicitly triggered metadata audit. Typed Tauri IPC contract. */
+	libraryTagAudit: (request: TagAuditRequest) => typedError<TagAuditResponse, string>(__TAURI_INVOKE("library_tag_audit", { request })),
 	/**  Ranked local-index albums and album artists for selected servers/folders. */
 	libraryScopeMostPlayed: (request: LibraryMostPlayedRequest) => typedError<LibraryMostPlayedResponse, string>(__TAURI_INVOKE("library_scope_most_played", { request })),
 	libraryGetArtifact: (serverId: string, trackId: string, artifactKind: string, sourceKind: string | null, sourceId: string | null, format: string | null) => typedError<{
@@ -2299,6 +2301,42 @@ export type SyncStateDto = {
 export type SyncTrackResult = {
 	path: string,
 	skipped: boolean,
+};
+
+export type TagAuditAlbum = {
+	serverId: string,
+	libraryId: string | null,
+	albumId: string,
+	name: string,
+	artist: string | null,
+	trackCount: number,
+	genreTaggedTracks: number,
+	moodTaggedTracks: number,
+	/**  Album-level genre presence is distinct from the per-track genre count. */
+	albumGenreTagged: boolean,
+	genreStatus: TagAuditStatus,
+	moodStatus: TagAuditStatus,
+};
+
+export type TagAuditRequest = {
+	scopes: LibraryScopePair[],
+};
+
+export type TagAuditResponse = {
+	summary: TagAuditSummary,
+	albums: TagAuditAlbum[],
+};
+
+export type TagAuditStatus = "complete" | "partial" | "missing";
+
+export type TagAuditSummary = {
+	albumsChecked: number,
+	tracksChecked: number,
+	genreMissing: number,
+	genrePartial: number,
+	moodMissing: number,
+	moodPartial: number,
+	missingBoth: number,
 };
 
 /**  `library_get_artifact` payload — one row of `track_artifact`. */
