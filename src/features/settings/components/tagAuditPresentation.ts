@@ -1,4 +1,4 @@
-import type { TagAuditAlbum } from '@/lib/api/library/tagAudit';
+import type { TagAuditAlbum } from '@/lib/api/library';
 
 export type TagAuditFilter =
   | 'all' | 'genreMissing' | 'genrePartial'

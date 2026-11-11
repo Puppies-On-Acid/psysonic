@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
 import { useAuthStore } from '@/store/authStore';
-import { libraryTagAudit, type TagAuditAlbum, type TagAuditResponse, type TagAuditStatus } from '@/lib/api/library/tagAudit';
+import { libraryTagAudit, type TagAuditAlbum, type TagAuditResponse, type TagAuditStatus } from '@/lib/api/library';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { auditAlbumsCsv, filterAndSortAuditAlbums, type TagAuditFilter, type TagAuditSort } from './tagAuditPresentation';
 

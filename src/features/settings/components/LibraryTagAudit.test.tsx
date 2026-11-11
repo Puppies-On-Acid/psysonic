@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { resetAllStores } from '@/test/helpers/storeReset';
 import { useAuthStore } from '@/store/authStore';
-import { libraryTagAudit } from '@/lib/api/library/tagAudit';
+import { libraryTagAudit } from '@/lib/api/library';
 import LibraryTagAudit from './LibraryTagAudit';
 
 vi.mock('@/lib/api/library/tagAudit', () => ({

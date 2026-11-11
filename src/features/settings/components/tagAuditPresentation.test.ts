@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TagAuditAlbum } from '@/lib/api/library/tagAudit';
+import type { TagAuditAlbum } from '@/lib/api/library';
 import { auditAlbumsCsv, filterAndSortAuditAlbums } from './tagAuditPresentation';
 
 const create = (overrides: Partial<TagAuditAlbum>): TagAuditAlbum => ({

@@ -406,7 +406,7 @@ export const settings = {
   tagAuditGenrePartial: '{{count}} partially missing genre',
   tagAuditMoodMissing: '{{count}} fully missing mood',
   tagAuditMoodPartial: '{{count}} partially missing mood',
-  tagAuditBoth: '{{count}} missing both',
+  tagAuditBoth: '{{count}} incomplete in both genre and mood',
   tagAuditIndexNote: 'Results reflect the local index at the time of the audit, including offline indexed servers. Synchronizing or changing tags later does not update this snapshot; run another audit. Album-level genres count as present even when individual tracks are untagged.',
   tagAuditSearch: 'Search audited albums, artists, servers or library IDs',
   tagAuditFilter: 'Filter missing metadata',
