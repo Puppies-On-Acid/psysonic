@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigateToAlbum } from '@/features/album/hooks/useNavigateToAlbum';
+import { useLocation, useNavigate } from 'react-router';
+import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
 import { useAuthStore } from '@/store/authStore';
 import { libraryTagAudit, type TagAuditAlbum, type TagAuditResponse, type TagAuditStatus } from '@/lib/api/library/tagAudit';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
@@ -27,7 +28,8 @@ function Status({ value }: { value: TagAuditStatus }) {
 
 export default function LibraryTagAudit() {
   const { t } = useTranslation();
-  const openAlbum = useNavigateToAlbum();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(lastSnapshot);
   const [isRunning, setIsRunning] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -179,7 +181,7 @@ export default function LibraryTagAudit() {
                         <tr key={album.serverId + '\u001f' + (album.libraryId ?? '') + '\u001f' + album.albumId}>
                           <td>
                             <button type="button" className="btn btn-ghost" style={{ textAlign: 'left' }}
-                              onClick={() => openAlbum(album.albumId, { serverId: album.serverId })}>
+                              onClick={() => navigateToAlbumDetail(navigate, location, album.albumId, { serverId: album.serverId })}>
                               {album.name}
                             </button>
                             <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{album.artist}</div>

@@ -1,7 +1,7 @@
 # Library Tag Audit — v0.1 implementation checkpoint
 
-Base: Psysonic upstream \`main\` at \`242bd6fc99832b49bb26db62d4f8fdaa86ad6345\`.
-Branch: \`feat/library-tag-audit\`.
+Base: Psysonic upstream `main` at `242bd6fc99832b49bb26db62d4f8fdaa86ad6345`.
+Branch: `feat/library-tag-audit`.
 Status: **implementation candidate, unverified** until Windows builds/tests/benchmarks and owner smoke testing.
 
 ## Approved behavior (2026-11-10)
@@ -19,21 +19,21 @@ Status: **implementation candidate, unverified** until Windows builds/tests/benc
 
 ## Data behavior and constraints
 
-- Only non-deleted local tracks with a nonblank \`album_id\` are eligible. Tracks without album IDs are not represented in this album-focused audit.
+- Only non-deleted local tracks with a nonblank `album_id` are eligible. Tracks without album IDs are not represented in this album-focused audit.
 - Albums with no indexed tracks are not considered. This is **not** a completeness audit of remote music files.
 - At audit time, both genre and mood projection migrations must be completed. This protects against false negatives during first-time tag backfill. The audit can still reflect a not-yet-finished ordinary library synchronization; explain this in the UI.
-- Album-level genre presence comes from the local \`album.genre\` projection. Track-level genre and mood presence comes from the \`track_genre\` and \`track_mood\` projections.
+- Album-level genre presence comes from the local `album.genre` projection. Track-level genre and mood presence comes from the `track_genre` and `track_mood` projections.
 - Results are explicitly snapshots, not automatically refreshed on navigation or background sync. Large, all-missing libraries will return many results on the single user-triggered query; the UI paginates rendering, not backend transmission.
 - CSV exports only filtered affected-album rows and quotes/sanitizes fields against spreadsheet formula execution. No server URL, passwords, library paths, or raw track metadata is included.
 
 ## Verification required before calling this PR-ready
 
-1. \`npm ci\` (Node version per upstream \`package.json\`); \`npm run prebuild:release-notes\`; \`npx tsc --noEmit\`; \`npm run lint\`; \`npm run dep:check\`; \`npm run dep:check:barrels\`; \`npm test\` and coverage gates.
-2. \`cargo fmt --all --check\`; \`cargo test --workspace --all-targets\`; \`cargo clippy --workspace --all-targets -- -D warnings\` from \`src-tauri\`.
+1. `npm ci` (Node version per upstream `package.json`); `npm run prebuild:release-notes`; `npx tsc --noEmit`; `npm run lint`; `npm run dep:check`; `npm run dep:check:barrels`; `npm test` and coverage gates.
+2. `cargo fmt --all --check`; `cargo test --workspace --all-targets`; `cargo clippy --workspace --all-targets -- -D warnings` from `src-tauri`.
 3. Test SQLite behavior on exact compiled SHA: fully tagged, partially tagged, untagged, album-level-only genre, deleted tracks, blank tag strings, per-library and cross-server duplicates, incomplete backfill, empty scope, and blocked/failed database.
 4. Performance: compare upstream base versus feature HEAD on an equivalent selected local library for Settings open, Browse routes, idle/sync time, and 1× manually triggered audit latency/peak memory. Since the new query returns every affected album, use a large representative library and inspect query plan/SQLite lock contention. Define acceptable budget with owner; no result is currently a passing benchmark.
 5. Owner Windows smoke: Run/View independence, scope change warning, offline indexed server, pagination, click-to-album/back, filters, CSV escaping, error retry, repeated audit; independent read-only Claude Code review pinned to exact candidate SHA.
-6. Do not open a PR, merge this into \`personal/integration\`, or run on a production/live database without separate owner approval.
+6. Do not open a PR, merge this into `personal/integration`, or run on a production/live database without separate owner approval.
 
 ## Rollback
 

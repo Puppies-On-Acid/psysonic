@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { resetAllStores } from '@/test/helpers/storeReset';
@@ -46,7 +46,8 @@ describe('Settings library tag audit', () => {
     await user.click(screen.getByRole('button', { name: 'Run Audit' }));
     expect(libraryTagAudit).toHaveBeenCalledTimes(1);
     expect(libraryTagAudit).toHaveBeenCalledWith([{ serverId: 's1', libraryId: null }]);
-    await user.click(await screen.findByRole('button', { name: 'View Results' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(await screen.findByText('An Album')).toBeInTheDocument();
     expect(libraryTagAudit).toHaveBeenCalledTimes(1);
   });
