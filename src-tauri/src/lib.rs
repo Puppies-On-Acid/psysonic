@@ -733,6 +733,7 @@ pub fn run() {
             psysonic_analysis::commands::analysis_prune_pending_to_track_ids,
             psysonic_library::commands::library_get_status,
             psysonic_library::commands::library_scope_statistics,
+            psysonic_library::commands::library_tag_audit,
             psysonic_library::commands::library_scope_most_played,
             psysonic_library::commands::library_search,
             psysonic_library::commands::library_live_search,

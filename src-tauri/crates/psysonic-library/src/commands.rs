@@ -418,6 +418,17 @@ pub async fn library_get_status(
     })
 }
 
+/// Read-only, explicitly triggered metadata audit. The lightweight DTO remains
+/// hand-typed at the frontend Tauri edge until a generated binding refresh.
+#[tauri::command]
+pub async fn library_tag_audit(
+    runtime: State<'_, LibraryRuntime>,
+    request: crate::tag_audit::TagAuditRequest,
+) -> Result<crate::tag_audit::TagAuditResponse, String> {
+    let store = Arc::clone(&runtime.store);
+    library_spawn_blocking(move || crate::tag_audit::run(&store, &request)).await
+}
+
 // NOT specta-collected: returns a DTO carrying `raw_json: Value` (LibraryTrack/Album/ArtistDto) — specta rc.25 can't export serde_json::Value. Stays hand-written on generate_handler!.
 #[tauri::command]
 pub async fn library_search(
