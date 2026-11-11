@@ -65,9 +65,9 @@ pub mod scope_merge;
 pub mod search;
 pub mod starred_browse;
 pub mod statistics;
-pub mod tag_audit;
 pub mod store;
 pub mod sync;
+pub mod tag_audit;
 pub(crate) mod track_fts;
 
 pub use payload::{LibrarySyncIdlePayload, LibrarySyncProgressPayload};

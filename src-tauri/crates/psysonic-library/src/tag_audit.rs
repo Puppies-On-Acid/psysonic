@@ -334,17 +334,16 @@ mod tests {
     fn ignores_empty_tag_rows_and_checks_projection_readiness() {
         let conn = fixture();
         track(&conn, "s1", "l1", "empty-tag", "t1", false, false);
-        conn.execute(
-            "INSERT INTO track_genre VALUES ('s1', 't1', '  ')", [],
-        ).unwrap();
-        conn.execute(
-            "INSERT INTO track_mood VALUES ('s1', 't1', '')", [],
-        ).unwrap();
+        conn.execute("INSERT INTO track_genre VALUES ('s1', 't1', '  ')", [])
+            .unwrap();
+        conn.execute("INSERT INTO track_mood VALUES ('s1', 't1', '')", [])
+            .unwrap();
         assert!(!projections_ready(&conn).unwrap());
         conn.execute(
             "INSERT INTO library_data_migration VALUES ('genre_tags_v1', 1), ('mood_tags_v3', 1)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         assert!(projections_ready(&conn).unwrap());
         let result = query_audit(&conn, &[scope("s1", None)]).unwrap();
         assert_eq!(result.summary.genre_missing, 1);
