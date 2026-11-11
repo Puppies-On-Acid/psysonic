@@ -303,6 +303,8 @@ pub fn evaluate_page(
     limit: u32,
     offset: u32,
 ) -> Result<RulePage, String> {
+    // Always validate untrusted rules, scope and pagination before touching SQLite.
+    let compiled = compile_page(doc, scopes, limit, offset)?;
     // Do not silently report missing metadata while projection backfill is
     // incomplete. Rules on unrelated indexed fields remain evaluable.
     if requires_tag_projection(&doc.root) {
@@ -311,7 +313,6 @@ pub fn evaluate_page(
             return Err("Genre/mood projection backfill is incomplete".to_string());
         }
     }
-    let compiled = compile_page(doc, scopes, limit, offset)?;
     let mut stmt = conn.prepare(&compiled.sql).map_err(|err| err.to_string())?;
     let rows = stmt
         .query_map(params_from_iter(compiled.params.iter()), |row| {
@@ -479,9 +480,25 @@ mod tests {
     fn does_not_merge_copies_or_include_deleted_or_unlinked_albums() {
         let conn = fixture();
         ready(&conn);
-        add_track(&conn, "s1", "l1", Some("same"), "a", Some("Rock"), Some("Bright"));
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("same"),
+            "a",
+            Some("Rock"),
+            Some("Bright"),
+        );
         add_track(&conn, "s1", "l2", Some("same"), "b", None, None);
-        add_track(&conn, "s2", "l1", Some("same"), "c", None, Some("Bright"));
+        add_track(
+            &conn,
+            "s2",
+            "l1",
+            Some("same"),
+            "c",
+            None,
+            Some("Bright"),
+        );
         add_track(&conn, "s1", "l1", Some("deleted"), "d", None, None);
         add_track(&conn, "s1", "l1", None, "orphan", None, None);
         conn.execute(
@@ -493,12 +510,23 @@ mod tests {
         let result = evaluate_page(&conn, &missing_preset(), &scopes, 50, 0).unwrap();
         assert_eq!(result.items.len(), 2);
         assert_eq!(
-            result.items.iter().map(|row| row.server_id.as_str()).collect::<Vec<_>>(),
+            result
+                .items
+                .iter()
+                .map(|row| row.server_id.as_str())
+                .collect::<Vec<_>>(),
             vec!["s1", "s2"]
         );
-        assert!(result.items.iter().all(|row| row.album_id.as_deref() == Some("same")));
+        assert!(result
+            .items
+            .iter()
+            .all(|row| row.album_id.as_deref() == Some("same")));
         let only_l1 = evaluate_page(
-            &conn, &missing_preset(), &[scope("s1", Some("l1"))], 50, 0,
+            &conn,
+            &missing_preset(),
+            &[scope("s1", Some("l1"))],
+            50,
+            0,
         )
         .unwrap();
         assert!(only_l1.items.is_empty());
@@ -533,7 +561,9 @@ mod tests {
             ]}
         }));
         assert!(evaluate_page(&conn, &injected, &[scope("s1", None)], 50, 0)
-            .unwrap().items.is_empty());
+            .unwrap()
+            .items
+            .is_empty());
     }
 
     #[test]
@@ -541,8 +571,24 @@ mod tests {
         let conn = fixture();
         ready(&conn);
         add_track(&conn, "s1", "l1", None, "orphan", None, None);
-        add_track(&conn, "s1", "l1", Some("one"), "tagged", Some("Rock"), Some("Bright"));
-        add_track(&conn, "s1", "l1", Some("two"), "blank", Some("  "), Some(""));
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("one"),
+            "tagged",
+            Some("Rock"),
+            Some("Bright"),
+        );
+        add_track(
+            &conn,
+            "s1",
+            "l1",
+            Some("two"),
+            "blank",
+            Some("  "),
+            Some(""),
+        );
         add_track(&conn, "s1", "l1", Some("three"), "deleted", None, None);
         conn.execute(
             "UPDATE track SET deleted = 1 WHERE id = 'deleted'",
@@ -567,7 +613,8 @@ mod tests {
         let conn = fixture();
         add_track(&conn, "s1", "l1", Some("one"), "t1", None, None);
         assert!(evaluate_page(&conn, &missing_preset(), &[scope("s1", None)], 50, 0)
-            .unwrap_err().contains("backfill"));
+            .unwrap_err()
+            .contains("backfill"));
 
         let simple = rule(json!({
             "version": 1, "entity": "track",
@@ -578,7 +625,9 @@ mod tests {
         }));
         assert_eq!(
             evaluate_page(&conn, &simple, &[scope("s1", None)], 50, 0)
-                .unwrap().items.len(),
+                .unwrap()
+                .items
+                .len(),
             1
         );
     }
@@ -627,7 +676,13 @@ mod tests {
                  "operator": "startsWith", "value": "t"}
             ]}
         }));
-        assert_eq!(evaluate_page(&conn, &track, &scopes, 5, 0).unwrap().items.len(), 1);
+        assert_eq!(
+            evaluate_page(&conn, &track, &scopes, 5, 0)
+                .unwrap()
+                .items
+                .len(),
+            1
+        );
         assert!(conn.execute("DELETE FROM track", []).is_err());
     }
 
@@ -649,7 +704,8 @@ mod tests {
         let conn = fixture();
         add_track(&conn, "s1", "l1", Some("first"), "one", None, None);
         add_track(&conn, "s1", "l1", Some("second"), "two", None, None);
-        conn.execute("UPDATE track SET artist = NULL WHERE id = 'one'", []).unwrap();
+        conn.execute("UPDATE track SET artist = NULL WHERE id = 'one'", [])
+            .unwrap();
         let predicate = |operator: &str, value: Option<&str>| {
             let mut node = json!({
                 "kind": "predicate", "field": "trackArtist",
@@ -665,12 +721,22 @@ mod tests {
         };
         let scopes = [scope("s1", None)];
         let not_contains = evaluate_page(
-            &conn, &predicate("notContains", Some("other")), &scopes, 10, 0,
-        ).unwrap();
+            &conn,
+            &predicate("notContains", Some("other")),
+            &scopes,
+            10,
+            0,
+        )
+        .unwrap();
         assert_eq!(matched_ids(&not_contains), vec!["two"]);
         let missing = evaluate_page(
-            &conn, &predicate("isMissing", None), &scopes, 10, 0,
-        ).unwrap();
+            &conn,
+            &predicate("isMissing", None),
+            &scopes,
+            10,
+            0,
+        )
+        .unwrap();
         assert_eq!(matched_ids(&missing), vec!["one"]);
     }
 }
