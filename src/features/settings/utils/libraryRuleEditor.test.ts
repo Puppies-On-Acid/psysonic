@@ -38,7 +38,7 @@ describe('Library Rules immutable condition builder actions', () => {
     expect(libraryRuleGroupAt(added, [2])?.combinator).toBe('all');
   });
 
-  it('removes nodes while protecting the root and a group's final condition', () => {
+  it('removes nodes while protecting the root and the last condition in a group', () => {
     const original = builtInMissingMetadataRule('album');
     expect(removeLibraryRuleNode(original, [])).toBe(original);
     const single = replaceLibraryRuleNode(original, [], {
