@@ -4,8 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { resetAllStores } from '@/test/helpers/storeReset';
 import { useAuthStore } from '@/store/authStore';
-import { libraryRulesEvaluate, type RuleMatch } from '@/lib/api/library';
+import { libraryRulesEvaluate, type RuleMatch, type RulePage } from '@/lib/api/library';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
+import { showToast } from '@/lib/dom/toast';
+import { saveLibraryRulesCsv } from './libraryRulesCsvSave';
 import LibraryRules from './LibraryRules';
 import { clearLibraryRulesSession } from '../utils/libraryRulesSession';
 
@@ -14,6 +16,12 @@ vi.mock('@/lib/api/library/libraryRules', () => ({
 }));
 vi.mock('@/lib/navigation/albumDetailNavigation', () => ({
   navigateToAlbumDetail: vi.fn(),
+}));
+vi.mock('./libraryRulesCsvSave', () => ({
+  saveLibraryRulesCsv: vi.fn(),
+}));
+vi.mock('@/lib/dom/toast', () => ({
+  showToast: vi.fn(),
 }));
 
 function match(name: string, itemId: string, albumId: string | null = itemId): RuleMatch {
@@ -28,6 +36,8 @@ describe('Settings Library Rules manual evaluation', () => {
     resetAllStores();
     vi.mocked(libraryRulesEvaluate).mockReset();
     vi.mocked(navigateToAlbumDetail).mockReset();
+    vi.mocked(saveLibraryRulesCsv).mockReset().mockResolvedValue('saved');
+    vi.mocked(showToast).mockReset();
     useAuthStore.setState({
       servers: [{
         id: 's1', name: 'Test Server', url: 'https://example.invalid',
@@ -258,6 +268,132 @@ describe('Settings Library Rules manual evaluation', () => {
     expect(screen.getByText(/Rules or library selection changed/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it('only exports after an explicit click, and includes every matched page', async () => {
+    const data = Array.from({ length: 200 }, (_, i) => match('Match ' + i, 'a' + i));
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('Preview only', 'preview')], hasMore: true })
+      .mockResolvedValueOnce({ items: data, hasMore: true })
+      .mockResolvedValueOnce({ items: [match('Last match', 'end')], hasMore: false });
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    await waitFor(() => expect(saveLibraryRulesCsv).toHaveBeenCalledTimes(1));
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(3);
+    expect(libraryRulesEvaluate).toHaveBeenNthCalledWith(
+      2, expect.any(String), [{ serverId: 's1', libraryId: null }], 200, 0,
+    );
+    expect(libraryRulesEvaluate).toHaveBeenNthCalledWith(
+      3, expect.any(String), [{ serverId: 's1', libraryId: null }], 200, 200,
+    );
+    const [bytes, entity, dialog] = vi.mocked(saveLibraryRulesCsv).mock.calls[0];
+    expect(entity).toBe('album');
+    expect(dialog).toBe('Save all matching library rules as CSV');
+    const csv = new TextDecoder().decode(bytes);
+    expect(csv).toContain('"Last match"');
+    expect(csv).toContain('"Match 0"');
+    expect(csv).not.toContain('Preview only');
+    expect(showToast).toHaveBeenCalledWith('CSV saved with 201 matching rows.', 2800, 'success');
+  });
+
+  it('shows batch progress, allows cancellation and never saves partial output', async () => {
+    let finish!: (page: RulePage) => void;
+    const firstPage = Array.from({ length: 200 }, (_, i) => match('Row ' + i, 'a' + i));
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('Preview', 'preview')], hasMore: true })
+      .mockResolvedValueOnce({ items: firstPage, hasMore: true })
+      .mockImplementationOnce(() => new Promise<RulePage>(resolve => { finish = resolve; }));
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    expect(await screen.findByText(/Collecting matches: 200 rows/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run Rules' })).toBeDisabled();
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(3));
+    await user.click(screen.getByRole('button', { name: 'Cancel export' }));
+    finish({ items: [match('Last match', 'end')], hasMore: false });
+    expect(await screen.findByText('CSV export cancelled. No file was saved.')).toBeInTheDocument();
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled();
+  });
+
+  it('rejects later page errors without opening the Save dialog', async () => {
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('Preview', 'preview')], hasMore: true })
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 200 }, (_, i) => match('Match ' + i, 'a' + i)),
+        hasMore: true,
+      })
+      .mockRejectedValueOnce(new Error('SQLite busy'));
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('SQLite busy');
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      'Could not complete the Library Rules CSV export.', 4000, 'error',
+    );
+    expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled();
+  });
+
+  it('blocks export if the rule was changed after the last successful run', async () => {
+    vi.mocked(libraryRulesEvaluate).mockResolvedValue({
+      items: [match('Preview', 'preview')], hasMore: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Group combination' }), 'all');
+    expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeDisabled();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1);
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+  });
+
+  it('rejects export when the selected library changes while a batch is running', async () => {
+    let finish!: (page: RulePage) => void;
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('Preview', 'preview')], hasMore: false })
+      .mockImplementationOnce(() => new Promise<RulePage>(resolve => { finish = resolve; }));
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(2));
+    useAuthStore.setState({ libraryBrowseSelectionByServer: { s1: ['another-folder'] } });
+    finish({ items: [match('Result', 'result')], hasMore: false });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Library selection changed during export');
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      'Could not complete the Library Rules CSV export.', 4000, 'error',
+    );
+  });
+
+  it('handles native Save cancellation without claiming the CSV was saved', async () => {
+    vi.mocked(libraryRulesEvaluate).mockResolvedValue({
+      items: [match('Result', 'result')], hasMore: false,
+    });
+    vi.mocked(saveLibraryRulesCsv).mockResolvedValueOnce('cancelled');
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    expect(await screen.findByText('CSV export cancelled. No file was saved.')).toBeInTheDocument();
+    expect(saveLibraryRulesCsv).toHaveBeenCalledTimes(1);
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('never starts a rule scan when no library is selected', () => {
