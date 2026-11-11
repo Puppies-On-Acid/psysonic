@@ -67,6 +67,7 @@ pub mod starred_browse;
 pub mod statistics;
 pub mod store;
 pub mod sync;
+pub mod library_rules;
 pub mod tag_audit;
 pub(crate) mod track_fts;
 
