@@ -51,6 +51,12 @@ export const commands = {
 	libraryScopeStatistics: (request: LibraryStatisticsRequest) => typedError<LibraryStatisticsDto, string>(__TAURI_INVOKE("library_scope_statistics", { request })),
 	/**  Read-only, explicitly triggered metadata audit. Typed Tauri IPC contract. */
 	libraryTagAudit: (request: TagAuditRequest) => typedError<TagAuditResponse, string>(__TAURI_INVOKE("library_tag_audit", { request })),
+	/**
+	 *  Evaluate a bounded Library Rules page only in response to an explicit UI
+	 *  request. Heavy index work runs on the dedicated blocking reader; there are
+	 *  no sync hooks, SQLite writes or background rule scans.
+	 */
+	libraryRulesEvaluate: (request: RuleEvaluateRequest) => typedError<RulePage, string>(__TAURI_INVOKE("library_rules_evaluate", { request })),
 	/**  Ranked local-index albums and album artists for selected servers/folders. */
 	libraryScopeMostPlayed: (request: LibraryMostPlayedRequest) => typedError<LibraryMostPlayedResponse, string>(__TAURI_INVOKE("library_scope_most_played", { request })),
 	libraryGetArtifact: (serverId: string, trackId: string, artifactKind: string, sourceKind: string | null, sourceId: string | null, format: string | null) => typedError<{
@@ -2187,6 +2193,27 @@ export type RenameResult = {
 	newPath: string,
 	ok: boolean,
 	error: string | null,
+};
+
+export type RuleEvaluateRequest = {
+	scopes: LibraryScopePair[],
+	ruleJson: string,
+	limit: number,
+	offset: number,
+};
+
+export type RuleMatch = {
+	serverId: string,
+	libraryId: string | null,
+	itemId: string,
+	albumId: string | null,
+	name: string,
+	artist: string | null,
+};
+
+export type RulePage = {
+	items: RuleMatch[],
+	hasMore: boolean,
 };
 
 export type ServerHttpContextSyncWire = {
