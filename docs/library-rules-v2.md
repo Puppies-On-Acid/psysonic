@@ -38,3 +38,7 @@ The album registry refers to physical album columns name, artist, year in migrat
 3. Add the accessible visual field/group builder and explicit Run/View/CSV results, preserving current validated tag-audit UX.
 4. Before calling Stage 1 complete: regenerate Specta bindings if commands change; run full test/coverage/build/Rust gates on one exact candidate SHA, compare baseline vs V2 query and Settings idle performance, manual smoke and independent read-only review.
 5. No template persistence, background evaluation, schema migration, PR or integration merge in Stage 1A.
+
+## Stage 1C1 — isolated visual rule builder (candidate)
+
+The reusable `LibraryRuleBuilder` control builds album/track nested ALL/ANY conditions using typed field/operator selectors. It never invokes Tauri, scans the library, saves a rule, or schedules monitoring. Parent components must wire an explicit Run action in Stage 1C2 after IPC and pagination integration; this component is deliberately not mounted in Settings yet to preserve the working V1 audit. Edits are immutable, the root and last child are protected, and add controls are bounded at 64 nodes and nesting depth 5. English strings are added with ordinary translation fallback. Verify new reducer and component tests, TypeScript, ESLint, dependency rules, and existing audit test before continuing.
