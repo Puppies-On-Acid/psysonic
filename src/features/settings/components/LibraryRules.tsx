@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
+import { showToast } from '@/lib/dom/toast';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
 import { libraryRulesEvaluate } from '@/lib/api/library';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
@@ -17,8 +18,14 @@ import {
   type LibraryRulesSnapshot,
 } from '../utils/libraryRulesSession';
 import LibraryRuleBuilder from './LibraryRuleBuilder';
+import {
+  collectLibraryRulesCsv,
+  LibraryRulesCsvCancelled,
+} from '../utils/libraryRulesCsv';
+import { saveLibraryRulesCsv } from './libraryRulesCsvSave';
 
 const PAGE_SIZE = 50;
+type ExportPhase = 'collecting' | 'saving' | null;
 
 /**
  * Local-only, explicitly triggered rule evaluation. View Results and editing
@@ -38,6 +45,16 @@ export default function LibraryRules() {
     readLibraryRulesSession()?.showResults ?? false);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportPhase, setExportPhase] = useState<ExportPhase>(null);
+  const [exportRows, setExportRows] = useState(0);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const isExporting = exportPhase !== null;
+
+  useEffect(() => () => {
+    // Navigating away must never open a native Save picker later.
+    exportAbortRef.current?.abort();
+  }, []);
 
   // Session-only restoration after album navigation. This effect only caches
   // UI state; it never invokes the evaluator or touches persistent storage.
@@ -71,7 +88,7 @@ export default function LibraryRules() {
     context: LibraryRulesQueryContext,
     showAfterLoad: boolean,
   ) => {
-    if (isRunning) return;
+    if (isRunning || isExporting) return;
     setError(null);
     setIsRunning(true);
     try {
@@ -88,7 +105,7 @@ export default function LibraryRules() {
   };
 
   const run = () => {
-    if (isRunning) return;
+    if (isRunning || isExporting) return;
     if (currentScope.pairs.length === 0) {
       setError(t('settings.libraryRulesNoScope'));
       return;
@@ -108,10 +125,78 @@ export default function LibraryRules() {
   };
 
   const showPage = (index: number) => {
-    if (!snapshot || isRunning || isStale || index < 0 ||
+    if (!snapshot || isRunning || isExporting || isStale || index < 0 ||
         index > snapshot.pageIndex + 1 ||
         (index > snapshot.pageIndex && !snapshot.page.hasMore)) return;
     void loadPage(index, snapshot, true);
+  };
+
+  const currentFingerprint = (): string => {
+    const state = useAuthStore.getState();
+    return deriveLibraryBrowseScope({
+      servers: state.servers,
+      activeServerId: state.activeServerId,
+      libraryBrowseServerIds: state.libraryBrowseServerIds,
+      musicFoldersByServer: state.musicFoldersByServer,
+      libraryBrowseSelectionByServer: state.libraryBrowseSelectionByServer,
+    }, new Set()).fingerprint;
+  };
+
+  const exportAll = async () => {
+    if (!snapshot || isStale || isRunning || isExporting) return;
+    const captured = snapshot;
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
+    setExportRows(0);
+    setExportMessage(null);
+    setError(null);
+    setExportPhase('collecting');
+
+    const checkScope = () => {
+      if (currentFingerprint() !== captured.scopeFingerprint) {
+        throw new Error(t('settings.libraryRulesExportScopeChanged'));
+      }
+    };
+
+    try {
+      // Do not use the 50-row preview as the first export page. Every batch
+      // comes from the same captured AST/scopes, starting at offset zero.
+      const collected = await collectLibraryRulesCsv({
+        entity: captured.entity,
+        ruleJson: captured.ruleJson,
+        scopes: captured.scopes,
+        signal: abort.signal,
+        readPage: async (ruleJson, scopes, limit, offset) => {
+          checkScope();
+          const page = await libraryRulesEvaluate(ruleJson, scopes, limit, offset);
+          checkScope();
+          return page;
+        },
+        onProgress: setExportRows,
+      });
+      checkScope();
+      if (abort.signal.aborted) throw new LibraryRulesCsvCancelled();
+      setExportPhase('saving');
+      const result = await saveLibraryRulesCsv(
+        collected.bytes, captured.entity, t('settings.libraryRulesExportDialogTitle'));
+      if (result === 'saved') {
+        showToast(t('settings.libraryRulesExportSuccess', { count: collected.rows }), 2800, 'success');
+        setExportMessage(t('settings.libraryRulesExportSuccess', { count: collected.rows }));
+      } else {
+        setExportMessage(t('settings.libraryRulesExportCancelled'));
+      }
+    } catch (reason) {
+      if (abort.signal.aborted || reason instanceof LibraryRulesCsvCancelled) {
+        setExportMessage(t('settings.libraryRulesExportCancelled'));
+      } else {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(t('settings.libraryRulesExportFailed', { message }));
+        showToast(t('settings.libraryRulesExportFailedToast'), 4000, 'error');
+      }
+    } finally {
+      if (exportAbortRef.current === abort) exportAbortRef.current = null;
+      setExportPhase(null);
+    }
   };
 
   const openAlbum = (albumId: string, serverId: string) => {
@@ -124,30 +209,64 @@ export default function LibraryRules() {
         <LibraryRuleBuilder
           document={document}
           onChange={setDocument}
-          disabled={isRunning}
+          disabled={isRunning || isExporting}
         />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
           <button
-            type="button" className="btn btn-ghost" disabled={isRunning}
+            type="button" className="btn btn-ghost" disabled={isRunning || isExporting}
             onClick={() => setDocument(builtInMissingMetadataRule(document.entity))}
           >
             {t('settings.libraryRulesResetPreset')}
           </button>
           <button
             type="button" className="btn btn-surface"
-            disabled={isRunning || issues.length > 0 || currentScope.pairs.length === 0}
+            disabled={isRunning || isExporting || issues.length > 0 || currentScope.pairs.length === 0}
             onClick={run}
           >
             {isRunning ? t('settings.libraryRulesRunning') : t('settings.libraryRulesRun')}
           </button>
           <button
             type="button" className="btn btn-ghost"
-            disabled={!snapshot || isRunning}
+            disabled={!snapshot || isRunning || isExporting}
             onClick={() => setShowResults(value => !value)}
           >
             {t('settings.libraryRulesViewResults')}
           </button>
+          {snapshot && (
+            <button
+              type="button" className="btn btn-ghost"
+              disabled={isRunning || isExporting || isStale}
+              onClick={() => void exportAll()}
+            >
+              {t('settings.libraryRulesExportAll')}
+            </button>
+          )}
+          {exportPhase === 'collecting' && (
+            <button
+              type="button" className="btn btn-ghost"
+              onClick={() => exportAbortRef.current?.abort()}
+            >
+              {t('settings.libraryRulesExportCancel')}
+            </button>
+          )}
         </div>
+        {exportPhase && (
+          <p role="status" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {exportPhase === 'collecting'
+              ? t('settings.libraryRulesExportProgress', { count: exportRows })
+              : t('settings.libraryRulesExportSaving')}
+          </p>
+        )}
+        {!exportPhase && exportMessage && (
+          <p role="status" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {exportMessage}
+          </p>
+        )}
+        {snapshot && (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {t('settings.libraryRulesExportNote')}
+          </p>
+        )}
         {currentScope.pairs.length === 0 && (
           <p role="status">{t('settings.libraryRulesNoScope')}</p>
         )}
@@ -240,7 +359,7 @@ export default function LibraryRules() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button
                 type="button" className="btn btn-ghost"
-                disabled={isRunning || isStale || snapshot.pageIndex === 0}
+                disabled={isRunning || isExporting || isStale || snapshot.pageIndex === 0}
                 onClick={() => showPage(snapshot.pageIndex - 1)}
               >
                 {t('settings.libraryRulesPrevious')}
@@ -250,7 +369,7 @@ export default function LibraryRules() {
               </span>
               <button
                 type="button" className="btn btn-ghost"
-                disabled={isRunning || isStale || !snapshot.page.hasMore}
+                disabled={isRunning || isExporting || isStale || !snapshot.page.hasMore}
                 onClick={() => showPage(snapshot.pageIndex + 1)}
               >
                 {t('settings.libraryRulesNext')}
