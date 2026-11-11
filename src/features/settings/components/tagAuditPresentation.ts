@@ -48,7 +48,7 @@ export function filterAndSortAuditAlbums(
 function csvCell(value: string | number | boolean | null): string {
   let text = String(value ?? '');
   if (/^\s*[=+\-@\t\r]/.test(text)) text = "'" + text;
-  return '"' + text.replaceAll('"', '""') + '"';
+  return '"' + text.replace(/"/g, '""') + '"';
 }
 
 export function auditAlbumsCsv(albums: readonly TagAuditAlbum[]): string {
