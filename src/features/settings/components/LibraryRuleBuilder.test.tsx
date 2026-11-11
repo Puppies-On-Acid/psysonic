@@ -83,7 +83,7 @@ describe('Library Rules condition builder', () => {
     expect(last.root.children[2]).toEqual({
       kind: 'predicate', field: 'albumName', operator: 'isPresent',
     });
-    expect(Object.hasOwn(last.root.children[2], 'value')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(last.root.children[2], 'value')).toBe(false);
     expect(validateLibraryRuleDocument(last)).toEqual([]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
