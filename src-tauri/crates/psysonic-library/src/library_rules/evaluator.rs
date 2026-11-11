@@ -4,6 +4,7 @@
 //! user-provided value and server/library scope is a SQLite bound parameter.
 
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
+use serde::Serialize;
 
 use super::{
     validate_rule_document, RuleCombinator, RuleDocument, RuleEntity, RuleNode, RuleOperator,
@@ -16,7 +17,8 @@ use crate::tag_audit::projections_ready;
 pub const MAX_RULE_PAGE_SIZE: u32 = 200;
 const MAX_RULE_SCOPES: usize = 150;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct RuleMatch {
     pub server_id: String,
     pub library_id: Option<String>,
@@ -26,7 +28,8 @@ pub struct RuleMatch {
     pub artist: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct RulePage {
     pub items: Vec<RuleMatch>,
     pub has_more: bool,

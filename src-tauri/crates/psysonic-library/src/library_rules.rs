@@ -6,6 +6,53 @@ pub mod evaluator;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::dto::LibraryScopePair;
+use crate::store::LibraryStore;
+
+/// Maximum request JSON bytes allowed before invoking the recursive JSON decoder.
+/// The actual AST is also constrained to 64 nodes / depth 5 by its validator.
+pub const MAX_RULE_JSON_BYTES: usize = 2 * 1024 * 1024;
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuleEvaluateRequest {
+    pub scopes: Vec<LibraryScopePair>,
+    pub rule_json: String,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+/// Strictly on-demand service entry point. Only obtains a dedicated heavy-query
+/// SQLite reader after cheap input checks. No server I/O, writes or sync activity.
+pub fn run(store: &LibraryStore, request: &RuleEvaluateRequest) -> Result<evaluator::RulePage, String> {
+    let document = validate_evaluate_request(request)?;
+    // The store helper expects rusqlite::Result<R>; R is the evaluator's
+    // Result<RulePage, String>. Returning that as a value preserves useful
+    // validation/SQL diagnostics without turning them into SQLite errors.
+    store.with_scope_detail_read_conn(|conn| {
+        Ok(evaluator::evaluate_page(
+            conn,
+            &document,
+            &request.scopes,
+            request.limit,
+            request.offset,
+        ))
+    })?
+}
+
+fn validate_evaluate_request(request: &RuleEvaluateRequest) -> Result<RuleDocument, String> {
+    if request.rule_json.len() > MAX_RULE_JSON_BYTES {
+        return Err("Library Rules document is too large".to_string());
+    }
+    if request.limit == 0 || request.limit > evaluator::MAX_RULE_PAGE_SIZE {
+        return Err("Library Rules page limit must be between 1 and 200".to_string());
+    }
+    if request.scopes.is_empty() || request.scopes.len() > 150 {
+        return Err("Select 1–150 library scopes before running a rule".to_string());
+    }
+    parse_rule_document(&request.rule_json)
+}
+
 pub const LIBRARY_RULE_VERSION: u16 = 1;
 pub const MAX_LIBRARY_RULE_NODES: usize = 64;
 pub const MAX_LIBRARY_RULE_DEPTH: usize = 5;
@@ -380,6 +427,62 @@ mod tests {
         assert!(parse(&rule).is_ok());
         rule["root"]["children"][0]["value"] = json!(0);
         assert!(parse(&rule).is_err());
+    }
+
+    #[test]
+    fn evaluation_request_checks_limits_before_query_execution() {
+        let preset = album_preset().to_string();
+        let mut request = RuleEvaluateRequest {
+            scopes: vec![LibraryScopePair {
+                server_id: "s1".to_string(),
+                library_id: None,
+            }],
+            rule_json: preset.clone(),
+            limit: 50,
+            offset: 0,
+        };
+        assert!(validate_evaluate_request(&request).is_ok());
+        request.limit = 0;
+        assert!(validate_evaluate_request(&request).is_err());
+        request.limit = evaluator::MAX_RULE_PAGE_SIZE + 1;
+        assert!(validate_evaluate_request(&request).is_err());
+        request.limit = 50;
+        request.scopes.clear();
+        assert!(validate_evaluate_request(&request).is_err());
+        request.scopes = (0..151)
+            .map(|n| LibraryScopePair {
+                server_id: format!("s{n}"),
+                library_id: None,
+            })
+            .collect();
+        assert!(validate_evaluate_request(&request).is_err());
+        request.scopes.truncate(1);
+        request.rule_json = "x".repeat(MAX_RULE_JSON_BYTES + 1);
+        assert!(validate_evaluate_request(&request).is_err());
+        request.rule_json = preset;
+        assert!(validate_evaluate_request(&request).is_ok());
+    }
+
+    #[test]
+    fn evaluation_request_rejects_untrusted_json_and_unknown_keys() {
+        let request = RuleEvaluateRequest {
+            scopes: vec![LibraryScopePair {
+                server_id: "s1".to_string(),
+                library_id: None,
+            }],
+            rule_json: "{\"version\": 1, \"entity\": \"album\", \"root\": null}".to_string(),
+            limit: 50,
+            offset: 0,
+        };
+        assert!(validate_evaluate_request(&request).is_err());
+        let unknown = serde_json::json!({
+            "scopes": [{"serverId": "s1", "libraryId": null}],
+            "ruleJson": album_preset().to_string(),
+            "limit": 50,
+            "offset": 0,
+            "sql": "DELETE FROM track",
+        });
+        assert!(serde_json::from_value::<RuleEvaluateRequest>(unknown).is_err());
     }
 
     #[test]

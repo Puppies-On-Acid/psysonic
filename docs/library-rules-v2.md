@@ -42,3 +42,10 @@ The album registry refers to physical album columns name, artist, year in migrat
 ## Stage 1C1 — isolated visual rule builder (candidate)
 
 The reusable `LibraryRuleBuilder` control builds album/track nested ALL/ANY conditions using typed field/operator selectors. It never invokes Tauri, scans the library, saves a rule, or schedules monitoring. Parent components must wire an explicit Run action in Stage 1C2 after IPC and pagination integration; this component is deliberately not mounted in Settings yet to preserve the working V1 audit. Edits are immutable, the root and last child are protected, and add controls are bounded at 64 nodes and nesting depth 5. English strings are added with ordinary translation fallback. Verify new reducer and component tests, TypeScript, ESLint, dependency rules, and existing audit test before continuing.
+
+## Stage 1C2A — typed Rust service boundary (unverified candidate)
+
+- `library_rules::RuleEvaluateRequest` defines a Specta-compatible IPC shape with `scopes`, `ruleJson`, `limit` and `offset`; `RulePage`/`RuleMatch` are serializable, typeable DTOs in camelCase.
+- The `library_rules::run` service is **explicitly invoked only** (not wired into Tauri yet) and uses `LibraryStore::with_scope_detail_read_conn` to avoid contending with ordinary browse reads. The request rejects malformed/oversized JSON (2 MiB), page limits outside 1–200, scope counts outside 1–150, and invalid rule ASTs *before* taking a database read lock.
+- Two new Rust unit tests cover service input rejection and request shape; test `cargo fmt --all --check`, targeted `cargo test -p psysonic-library --lib library_rules -- --nocapture` (19 expected), and Clippy on an exact SHA. No SQLite writes, schema changes, generated TypeScript binding changes, UI mounting, background jobs or PR.
+- Next Stage 1C2B will register a single `#[tauri::command]`/Specta command, regenerate the committed `src/generated/bindings.ts` through the **upstream generator** on the owner's Windows checkout, and wire the manual-only frontend. Do not hand-fake the generated binding or mark Specta freshness pass prematurely.
