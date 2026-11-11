@@ -1,6 +1,8 @@
 //! Bounded local Library Rules schema validation (Stage 1B1).
-//! No query, Tauri command, database mutation or background work in this slice.
+//! The evaluator is opt-in and read-only; no Tauri command or background work.
 //! Frontend validation is not a security boundary; validate again in Rust.
+
+pub mod evaluator;
 
 use serde::{Deserialize, Deserializer, Serialize};
 

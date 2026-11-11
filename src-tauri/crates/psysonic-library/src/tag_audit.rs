@@ -70,7 +70,7 @@ fn coverage_status(tagged: u64, total: u64, album_tagged: bool) -> TagAuditStatu
     }
 }
 
-fn projections_ready(conn: &Connection) -> rusqlite::Result<bool> {
+pub(crate) fn projections_ready(conn: &Connection) -> rusqlite::Result<bool> {
     let completed: i64 = conn.query_row(
         "SELECT COUNT(*) FROM library_data_migration \
          WHERE id IN ('genre_tags_v1', 'mood_tags_v3') \
@@ -81,7 +81,7 @@ fn projections_ready(conn: &Connection) -> rusqlite::Result<bool> {
     Ok(completed == 2)
 }
 
-fn query_audit(
+pub(crate) fn query_audit(
     conn: &Connection,
     scopes: &[LibraryScopePair],
 ) -> rusqlite::Result<TagAuditResponse> {
