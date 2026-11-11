@@ -19,19 +19,6 @@ let lastSnapshot: Snapshot | null = null;
 
 const PAGE_SIZE = 50;
 
-function selectedScope() {
-  const state = useAuthStore.getState();
-  // An offline server can still have an indexed local library; don't silently
-  // omit it from the audit because the network is unreachable.
-  const scope = deriveLibraryBrowseScope({
-    servers: state.servers,
-    activeServerId: state.activeServerId,
-    libraryBrowseServerIds: state.libraryBrowseServerIds,
-    musicFoldersByServer: state.musicFoldersByServer,
-    libraryBrowseSelectionByServer: state.libraryBrowseSelectionByServer,
-  }, new Set());
-  return scope;
-}
 
 function Status({ value }: { value: TagAuditStatus }) {
   const { t } = useTranslation();
@@ -50,6 +37,17 @@ export default function LibraryTagAudit() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const servers = useAuthStore(s => s.servers);
+  const activeServerId = useAuthStore(s => s.activeServerId);
+  const libraryBrowseServerIds = useAuthStore(s => s.libraryBrowseServerIds);
+  const musicFoldersByServer = useAuthStore(s => s.musicFoldersByServer);
+  const libraryBrowseSelectionByServer = useAuthStore(s => s.libraryBrowseSelectionByServer);
+  const currentScope = useMemo(() => deriveLibraryBrowseScope({
+    servers, activeServerId, libraryBrowseServerIds,
+    musicFoldersByServer, libraryBrowseSelectionByServer,
+  }, new Set()), [
+    servers, activeServerId, libraryBrowseServerIds,
+    musicFoldersByServer, libraryBrowseSelectionByServer,
+  ]);
 
   const results = useMemo(() => snapshot
     ? filterAndSortAuditAlbums(snapshot.result.albums, filter, search, sort)
@@ -61,7 +59,7 @@ export default function LibraryTagAudit() {
 
   const run = async () => {
     if (isRunning) return;
-    const scope = selectedScope();
+    const scope = currentScope;
     if (scope.pairs.length === 0) {
       setError(t('settings.tagAuditNoScope'));
       return;
@@ -131,7 +129,7 @@ export default function LibraryTagAudit() {
             {t('settings.tagAuditLastRun', { date: new Date(snapshot.finishedAt).toLocaleString() })}
             {' · '}
             {t('settings.tagAuditScope', { servers: snapshot.scopedServers.map(serverName).join(', ') })}
-            {selectedScope().fingerprint !== snapshot.scopeFingerprint && (
+            {currentScope.fingerprint !== snapshot.scopeFingerprint && (
               <> · {t('settings.tagAuditScopeChanged')}</>
             )}
           </p>
