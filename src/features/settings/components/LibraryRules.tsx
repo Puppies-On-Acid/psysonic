@@ -64,7 +64,13 @@ export default function LibraryRules() {
     (snapshot.ruleJson !== ruleJson || snapshot.scopeFingerprint !== currentScope.fingerprint);
   const serverName = (id: string) => servers.find(server => server.id === id)?.name || id;
 
-  const loadPage = async (index: number, context: QueryContext) => {
+  // A new Run returns to the explicit View Results state. Pagination must
+  // preserve visibility even when returning to page zero.
+  const loadPage = async (
+    index: number,
+    context: QueryContext,
+    showAfterLoad: boolean,
+  ) => {
     if (isRunning) return;
     setError(null);
     setIsRunning(true);
@@ -72,8 +78,7 @@ export default function LibraryRules() {
       const page = await libraryRulesEvaluate(
         context.ruleJson, context.scopes, PAGE_SIZE, index * PAGE_SIZE);
       setSnapshot({ ...context, page, pageIndex: index, finishedAt: Date.now() });
-      if (index !== 0) setShowResults(true);
-      else setShowResults(false);
+      setShowResults(showAfterLoad);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       // Keep the previous successful snapshot, clearly labelled with its scope.
@@ -99,14 +104,14 @@ export default function LibraryRules() {
       scopeFingerprint: currentScope.fingerprint,
       scopedServers: [...currentScope.serverIds],
     };
-    void loadPage(0, context);
+    void loadPage(0, context, false);
   };
 
   const showPage = (index: number) => {
     if (!snapshot || isRunning || isStale || index < 0 ||
         index > snapshot.pageIndex + 1 ||
         (index > snapshot.pageIndex && !snapshot.page.hasMore)) return;
-    void loadPage(index, snapshot);
+    void loadPage(index, snapshot, true);
   };
 
   const openAlbum = (albumId: string, serverId: string) => {

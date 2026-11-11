@@ -73,7 +73,8 @@ describe('Settings Library Rules manual evaluation', () => {
     vi.mocked(libraryRulesEvaluate)
       .mockResolvedValueOnce({ items: [match('First album', 'a1')], hasMore: true })
       .mockResolvedValueOnce({ items: [match('Second album', 'a2')], hasMore: false })
-      .mockResolvedValueOnce({ items: [match('First album', 'a1')], hasMore: true });
+      .mockResolvedValueOnce({ items: [match('First album', 'a1')], hasMore: true })
+      .mockResolvedValueOnce({ items: [match('Updated album', 'a3')], hasMore: false });
     const user = userEvent.setup();
     renderWithProviders(<LibraryRules />);
     await user.click(screen.getByRole('button', { name: 'Run Rules' }));
@@ -97,6 +98,20 @@ describe('Settings Library Rules manual evaluation', () => {
       expect.any(String), [{ serverId: 's1', libraryId: null }], 50, 0,
     );
     expect(await screen.findByText('First album')).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    // A fresh Run resets the explicit View Results step even after navigating.
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(4));
+    expect(libraryRulesEvaluate).toHaveBeenLastCalledWith(
+      expect.any(String), [{ serverId: 's1', libraryId: null }], 50, 0,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await waitFor(() => expect(screen.queryByText('First album')).not.toBeInTheDocument());
+    expect(screen.queryByText('Updated album')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'View Results' }));
+    expect(await screen.findByText('Updated album')).toBeInTheDocument();
   });
 
   it('disables Run for invalid typed conditions, then accepts a corrected value', async () => {
