@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 use crate::dto::LibraryScopePair;
 use crate::store::LibraryStore;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TagAuditRequest {
     pub scopes: Vec<LibraryScopePair>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum TagAuditStatus {
     Complete,
@@ -24,7 +24,7 @@ pub enum TagAuditStatus {
     Missing,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TagAuditAlbum {
     pub server_id: String,
@@ -41,7 +41,7 @@ pub struct TagAuditAlbum {
     pub mood_status: TagAuditStatus,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TagAuditSummary {
     pub albums_checked: u64,
@@ -53,7 +53,7 @@ pub struct TagAuditSummary {
     pub missing_both: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TagAuditResponse {
     pub summary: TagAuditSummary,

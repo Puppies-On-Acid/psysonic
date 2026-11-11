@@ -26,6 +26,10 @@ Status: **implementation candidate, unverified** until Windows builds/tests/benc
 - Results are explicitly snapshots, not automatically refreshed on navigation or background sync. Large, all-missing libraries will return many results on the single user-triggered query; the UI paginates rendering, not backend transmission.
 - CSV exports only filtered affected-album rows and quotes/sanitizes fields against spreadsheet formula execution. No server URL, passwords, library paths, or raw track metadata is included.
 
+## IPC contract
+
+The `library_tag_audit` Tauri command and its request/response DTOs are Specta-typeable and are registered in both `generate_handler!` and `collect_commands!`. The committed `src/generated/bindings.ts` must be regenerated with Rust's exporter and verified with `committed_bindings_are_fresh`. Do not edit the generated file by hand or add the command to the `UNTYPEABLE` exception list.
+
 ## Verification required before calling this PR-ready
 
 1. `npm ci` (Node version per upstream `package.json`); `npm run prebuild:release-notes`; `npx tsc --noEmit`; `npm run lint`; `npm run dep:check`; `npm run dep:check:barrels`; `npm test` and coverage gates.

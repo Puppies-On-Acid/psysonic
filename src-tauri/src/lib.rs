@@ -126,6 +126,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             psysonic_library::commands::library_count_live_tracks,
             psysonic_library::commands::library_get_status,
             psysonic_library::commands::library_scope_statistics,
+            psysonic_library::commands::library_tag_audit,
             psysonic_library::commands::library_scope_most_played,
             psysonic_library::commands::library_get_artifact,
             psysonic_library::commands::library_get_entity_user_ratings,

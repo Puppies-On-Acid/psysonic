@@ -418,9 +418,9 @@ pub async fn library_get_status(
     })
 }
 
-/// Read-only, explicitly triggered metadata audit. The lightweight DTO remains
-/// hand-typed at the frontend Tauri edge until a generated binding refresh.
+/// Read-only, explicitly triggered metadata audit. Typed Tauri IPC contract.
 #[tauri::command]
+#[specta::specta]
 pub async fn library_tag_audit(
     runtime: State<'_, LibraryRuntime>,
     request: crate::tag_audit::TagAuditRequest,
