@@ -39,6 +39,7 @@ pub mod label_album_browse;
 pub mod label_tags;
 pub mod label_tags_backfill;
 pub mod library_readiness;
+pub mod library_rules;
 pub mod live_search;
 pub mod lossless_albums;
 pub mod lossless_formats;
@@ -67,7 +68,6 @@ pub mod starred_browse;
 pub mod statistics;
 pub mod store;
 pub mod sync;
-pub mod library_rules;
 pub mod tag_audit;
 pub(crate) mod track_fts;
 

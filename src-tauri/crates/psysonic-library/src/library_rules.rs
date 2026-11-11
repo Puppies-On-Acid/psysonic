@@ -185,12 +185,19 @@ fn validate_node(
             }
             for (index, child) in children.iter().enumerate() {
                 validate_node(
-                    child, entity, depth + 1, count,
+                    child,
+                    entity,
+                    depth + 1,
+                    count,
                     &format!("{path}/children/{index}"),
                 )?;
             }
         }
-        RuleNode::Predicate { field, operator, value } => {
+        RuleNode::Predicate {
+            field,
+            operator,
+            value,
+        } => {
             let spec = rule_field(entity, field)
                 .ok_or_else(|| format!("{path}: unknown field {field}"))?;
             if !operator_supported(spec, *operator) {
@@ -201,7 +208,8 @@ fn validate_node(
                     return Err(format!("{path}: presence operator takes no value"));
                 }
             } else {
-                let bound = value.as_ref()
+                let bound = value
+                    .as_ref()
                     .ok_or_else(|| format!("{path}: value is required"))?;
                 if !valid_value(bound, spec.kind) {
                     return Err(format!("{path}: invalid value for {field}"));
@@ -242,7 +250,10 @@ mod tests {
     #[test]
     fn album_and_track_presets_roundtrip() {
         let preset = album_preset();
-        assert_eq!(serde_json::to_value(parse(&preset).unwrap()).unwrap(), preset);
+        assert_eq!(
+            serde_json::to_value(parse(&preset).unwrap()).unwrap(),
+            preset
+        );
         let track = json!({
             "version": 1, "entity": "track",
             "root": { "kind": "group", "combinator": "any", "children": [
@@ -299,7 +310,10 @@ mod tests {
         rule["root"]["children"][0]["value"] = Value::Null;
         assert!(parse(&rule).is_err());
         let mut rule = album_preset();
-        rule["root"]["children"][0].as_object_mut().unwrap().remove("value");
+        rule["root"]["children"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("value");
         assert!(parse(&rule).is_err());
         let mut rule = album_preset();
         rule["root"]["children"][0]["operator"] = json!("contains");
@@ -326,9 +340,13 @@ mod tests {
     fn node_and_depth_limits_are_enforced() {
         let mut rule = album_preset();
         rule["root"]["children"] = Value::Array(
-            (0..MAX_LIBRARY_RULE_NODES).map(|_| json!({
-                "kind": "predicate", "field": "albumName", "operator": "isPresent"
-            })).collect(),
+            (0..MAX_LIBRARY_RULE_NODES)
+                .map(|_| {
+                    json!({
+                        "kind": "predicate", "field": "albumName", "operator": "isPresent"
+                    })
+                })
+                .collect(),
         );
         assert!(parse(&rule).unwrap_err().contains("too many"));
         let mut node = json!({
