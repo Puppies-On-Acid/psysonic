@@ -1,8 +1,8 @@
 # PSY-015 — Library Rules: phased implementation specification
 
-**Status:** Owner-approved **product direction** (D-016, 2026-11-10), **engineering details proposed and pending review**. This document deliberately distinguishes the agreed scope from unapproved persistence, automatic-evaluation and PR decisions.
+**Status:** Owner-approved **product direction** (D-016) and **Stage 1 branch/implementation** (D-017, 2026-11-10). Stage 1A contract/validation candidate has been committed to `feat/library-tag-audit-v2` and awaits Windows tests. Stages 2–3 persistence/tracking design and PR remain separate approval decisions.
 
-**Live records:** [PSY-015 work issue #13](https://github.com/Puppies-On-Acid/psysonic/issues/13), [living handoff #1](https://github.com/Puppies-On-Acid/psysonic/issues/1), [owner decision D-016](../DECISIONS.md), and [existing implementation](https://github.com/Puppies-On-Acid/psysonic/tree/feat/library-tag-audit).
+**Live records:** [PSY-015 work issue #13](https://github.com/Puppies-On-Acid/psysonic/issues/13), [living handoff #1](https://github.com/Puppies-On-Acid/psysonic/issues/1), [owner decisions D-016/D-017](../DECISIONS.md), [preserved v1 baseline](https://github.com/Puppies-On-Acid/psysonic/tree/feat/library-tag-audit) and [isolated Stage 1 work branch](https://github.com/Puppies-On-Acid/psysonic/tree/feat/library-tag-audit-v2).
 
 **Verified refs at planning time (2026-11-10):** upstream/fork main `242bd6fc99832b49bb26db62d4f8fdaa86ad6345`; tag-audit candidate `0094fd5dfdfe86fe5fea499a01b1e745793705ea`; daily-drive `personal/integration` `8d4a8dff1551728944ec2052dc02d9c769c2ec7a`. Re-fetch before implementation; these are not timeless SHAs.
 
@@ -56,14 +56,14 @@ Suggested small slices:
 
 - **Benchmark classification: required** (large local-library scan, SQL and potentially background sync work). Compare same machine/library/profile and identical cold/warm run counts for an agreed baseline SHA vs each stage candidate. Capture median/min/max/variance for Settings open (no scan), 5 warm & 1 cold manual evaluation, library browse, sync idle, peak RSS/allocations, query plans/SQL index choices, lock contention and UI long-task symptoms. The owner's **~3-second** single audit observation is a smoke result, *not* a controlled comparison or a universal latency budget.
 - Preserve offline multi-server/library selection and read-only data semantics. Match upstream architecture, Rust/Specta bindings generation, translation/accessibility and build configuration. Treat missing local projections as explicit “not ready” rather than reporting zero tags.
-- Preserve current working tag-audit commit `0094fd5d` as a recoverable checkpoint. **Proposed branch strategy**: build Stage 1 on a separate, non-rewriting feature branch based on that commit; keep existing branch unchanged. Stage 2 and Stage 3 can be isolated reviewable follow-up branches once approved. No branches are created by this specification.
+- Preserve current working tag-audit commit `0094fd5d` as a recoverable checkpoint. **Owner-approved and implemented branch strategy (D-017)**: Stage 1 lives on `feat/library-tag-audit-v2`, created from `0094fd5d`, while original `feat/library-tag-audit` is untouched. Stage 2 and Stage 3 remain distinct follow-up implementation phases requiring their persistence/scheduling details approved. Source changes in V2 do not imply testing or PR readiness.
 - Independent **read-only Claude Code** review pinned to each meaningful exact SHA is required before PR readiness. Record findings and remediation; do not claim green CI until observed. Four Flatpak/Bash tests remain locally blocked in Windows and require a suitable Linux shell/CI environment.
 
 ## Open owner decisions (before consequential implementation)
 
-1. **Branch/review strategy:** preserve the tested tag audit branch and start Stage 1 in a new `feat/library-rules-builder` branch based on `0094fd5d` (recommended), versus develop all stages on existing branch. No PR is authorized yet.
+1. **Branch/review strategy — APPROVED (D-017):** separate Stage 1 `feat/library-tag-audit-v2` from `0094fd5d`; preserve the tested original branch. No PR is authorized yet.
 2. **Saved-template storage:** local application settings JSON (small and backup-friendly) versus a versioned SQLite rules store (better for later tracking but requires migrations). Prefer versioned settings for templates; independent tracking-state persistence may need SQLite in Stage 3.
 3. **Rule domain semantics:** default album and track as separate rule types, with explicit `any/all` track quantifiers within album rules (recommended), rather than a universal cross-entity expression language.
 4. **Tracking budget and persistence:** approval needed before writing new persistent tracking data or changing default scheduling/cancellation policies. Stage 3 cannot be implemented solely on the approval of its high-level intent.
 
-**Next action:** record these proposals in work issue #13 and ask owner for a focused architecture signoff before making Stage 1 source code changes. Preserve existing tests and branch until that checkpoint.
+**Next action:** run Windows validation on `feat/library-tag-audit-v2` Stage 1A (`libraryRuleModel.ts` and tests), then implement an independently validated, bounded Rust SQL evaluator and later the UI under this approved Stage 1 scope. Keep decisions about saved-rule storage and automatic tracking separate; retain exact-SHA benchmark and independent-review gates.
