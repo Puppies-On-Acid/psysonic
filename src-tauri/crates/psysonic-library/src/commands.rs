@@ -429,6 +429,19 @@ pub async fn library_tag_audit(
     library_spawn_blocking(move || crate::tag_audit::run(&store, &request)).await
 }
 
+/// Evaluate a bounded Library Rules page only in response to an explicit UI
+/// request. Heavy index work runs on the dedicated blocking reader; there are
+/// no sync hooks, SQLite writes or background rule scans.
+#[tauri::command]
+#[specta::specta]
+pub async fn library_rules_evaluate(
+    runtime: State<'_, LibraryRuntime>,
+    request: crate::library_rules::RuleEvaluateRequest,
+) -> Result<crate::library_rules::evaluator::RulePage, String> {
+    let store = Arc::clone(&runtime.store);
+    library_spawn_blocking(move || crate::library_rules::run(&store, &request)).await
+}
+
 // NOT specta-collected: returns a DTO carrying `raw_json: Value` (LibraryTrack/Album/ArtistDto) — specta rc.25 can't export serde_json::Value. Stays hand-written on generate_handler!.
 #[tauri::command]
 pub async fn library_search(
