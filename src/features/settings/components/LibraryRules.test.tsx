@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/helpers/renderWithProviders';
 import { resetAllStores } from '@/test/helpers/storeReset';
@@ -393,6 +393,43 @@ describe('Settings Library Rules manual evaluation', () => {
     await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
     expect(await screen.findByText('CSV export cancelled. No file was saved.')).toBeInTheDocument();
     expect(saveLibraryRulesCsv).toHaveBeenCalledTimes(1);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('reports native save failures without a false success message', async () => {
+    vi.mocked(libraryRulesEvaluate).mockResolvedValue({
+      items: [match('Result', 'result')], hasMore: false,
+    });
+    vi.mocked(saveLibraryRulesCsv).mockRejectedValueOnce(new Error('disk full'));
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full');
+    expect(saveLibraryRulesCsv).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      'Could not complete the Library Rules CSV export.', 4000, 'error',
+    );
+    expect(screen.queryByText(/CSV saved with/)).not.toBeInTheDocument();
+  });
+
+  it('does not open a delayed Save picker after leaving Settings during an export', async () => {
+    let finish!: (page: RulePage) => void;
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('Preview', 'preview')], hasMore: false })
+      .mockImplementationOnce(() => new Promise<RulePage>(resolve => { finish = resolve; }));
+    const user = userEvent.setup();
+    const mounted = renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export All Matches' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Export All Matches' }));
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      mounted.unmount();
+      finish({ items: [match('Later result', 'later')], hasMore: false });
+    });
+    expect(saveLibraryRulesCsv).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
   });
 
