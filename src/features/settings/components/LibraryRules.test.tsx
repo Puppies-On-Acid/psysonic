@@ -58,6 +58,7 @@ describe('Settings Library Rules manual evaluation', () => {
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     expect(screen.queryByText('Missing metadata')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(await screen.findByText('Missing metadata')).toBeInTheDocument();
     expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1);
@@ -77,6 +78,7 @@ describe('Settings Library Rules manual evaluation', () => {
     renderWithProviders(<LibraryRules />);
     await user.click(screen.getByRole('button', { name: 'Run Rules' }));
     await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(screen.getByText('First album')).toBeInTheDocument();
 
@@ -114,6 +116,22 @@ describe('Settings Library Rules manual evaluation', () => {
     await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
   });
 
+  it('marks edited rules stale without automatic evaluation or stale paging', async () => {
+    vi.mocked(libraryRulesEvaluate).mockResolvedValue({
+      items: [match('Album', 'a1')], hasMore: true,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'View Results' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Group combination' }), 'all');
+    expect(await screen.findByText(/Rules or library selection changed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1);
+  });
+
   it('marks a scope change stale without evaluating and requires an explicit rerun', async () => {
     vi.mocked(libraryRulesEvaluate).mockResolvedValue({
       items: [match('Album', 'a1')], hasMore: true,
@@ -122,6 +140,7 @@ describe('Settings Library Rules manual evaluation', () => {
     renderWithProviders(<LibraryRules />);
     await user.click(screen.getByRole('button', { name: 'Run Rules' }));
     await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'View Results' }));
 
     useAuthStore.setState({ libraryBrowseSelectionByServer: { s1: ['folder-2'] } });
@@ -147,6 +166,7 @@ describe('Settings Library Rules manual evaluation', () => {
     await user.click(screen.getByRole('button', { name: 'Run Rules' }));
     await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(screen.getByText('No items match these rules.')).toBeInTheDocument();
   });
@@ -167,6 +187,7 @@ describe('Settings Library Rules manual evaluation', () => {
     await waitFor(() => expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1));
     const requestJson = vi.mocked(libraryRulesEvaluate).mock.calls[0][0];
     expect(JSON.parse(requestJson).entity).toBe('track');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'View Results' }));
     expect(screen.getByText('Orphan track')).toBeInTheDocument();
     expect(screen.getByText('No linked album')).toBeInTheDocument();

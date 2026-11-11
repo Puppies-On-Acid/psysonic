@@ -13,7 +13,10 @@ describe('LibraryTab ratings', () => {
     renderWithProviders(<LibraryTab />);
     expect(screen.getByRole('button', { name: 'Run Audit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run Rules' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'View Results' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'View Results' })).toHaveLength(2);
+    screen.getAllByRole('button', { name: 'View Results' }).forEach(button => {
+      expect(button).toBeDisabled();
+    });
   });
 
   it('switches star ratings off and on', async () => {

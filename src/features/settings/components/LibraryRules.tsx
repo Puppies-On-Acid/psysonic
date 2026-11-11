@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
-import { libraryRulesEvaluate, type RulePage } from '@/lib/api/library';
-import type { LibraryScopePair } from '@/lib/api/library';
+import { libraryRulesEvaluate, type LibraryScopePair, type RulePage } from '@/lib/api/library';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { useAuthStore } from '@/store/authStore';
 import {
