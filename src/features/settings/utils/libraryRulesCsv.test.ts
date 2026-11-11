@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { RuleMatch, RulePage } from '@/lib/api/library';
+import type { LibraryScopePair, RuleMatch, RulePage } from '@/lib/api/library';
 import {
   collectLibraryRulesCsv,
   LibraryRulesCsvCancelled,
   RULES_CSV_BATCH_SIZE,
 } from './libraryRulesCsv';
 
-const scope = [{ serverId: 's1', libraryId: null }];
+const scope: LibraryScopePair[] = [{ serverId: 's1', libraryId: null }];
 const row = (n: number, name = 'Track ' + n): RuleMatch => ({
   serverId: 's1', libraryId: 'folder', itemId: 't' + n, albumId: 'album1',
   name, artist: 'Artist ' + n,
