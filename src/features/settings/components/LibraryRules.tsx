@@ -1,37 +1,29 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
-import { libraryRulesEvaluate, type LibraryScopePair, type RulePage } from '@/lib/api/library';
+import { libraryRulesEvaluate } from '@/lib/api/library';
 import { deriveLibraryBrowseScope } from '@/lib/library/libraryBrowseScope';
 import { useAuthStore } from '@/store/authStore';
 import {
   builtInMissingMetadataRule,
   validateLibraryRuleDocument,
   type LibraryRuleDocument,
-  type LibraryRuleEntity,
 } from '../utils/libraryRuleModel';
+import {
+  cacheLibraryRulesSession,
+  readLibraryRulesSession,
+  type LibraryRulesQueryContext,
+  type LibraryRulesSnapshot,
+} from '../utils/libraryRulesSession';
 import LibraryRuleBuilder from './LibraryRuleBuilder';
 
 const PAGE_SIZE = 50;
 
-interface QueryContext {
-  ruleJson: string;
-  entity: LibraryRuleEntity;
-  scopes: LibraryScopePair[];
-  scopeFingerprint: string;
-  scopedServers: string[];
-}
-
-interface Snapshot extends QueryContext {
-  page: RulePage;
-  pageIndex: number;
-  finishedAt: number;
-}
-
 /**
  * Local-only, explicitly triggered rule evaluation. View Results and editing
- * never call the evaluator. Only one bounded page is retained in memory.
+ * never call the evaluator. A single bounded result page plus the editor draft
+ * survive Settings navigation in volatile app memory, not persisted templates.
  * Stage 2 owns named-template persistence; Stage 3 owns sync-triggered tracking.
  */
 export default function LibraryRules() {
@@ -39,11 +31,19 @@ export default function LibraryRules() {
   const navigate = useNavigate();
   const location = useLocation();
   const [document, setDocument] = useState<LibraryRuleDocument>(() =>
-    builtInMissingMetadataRule('album'));
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [showResults, setShowResults] = useState(false);
+    readLibraryRulesSession()?.document ?? builtInMissingMetadataRule('album'));
+  const [snapshot, setSnapshot] = useState<LibraryRulesSnapshot | null>(() =>
+    readLibraryRulesSession()?.snapshot ?? null);
+  const [showResults, setShowResults] = useState(() =>
+    readLibraryRulesSession()?.showResults ?? false);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Session-only restoration after album navigation. This effect only caches
+  // UI state; it never invokes the evaluator or touches persistent storage.
+  useEffect(() => {
+    cacheLibraryRulesSession({ document, snapshot, showResults });
+  }, [document, snapshot, showResults]);
 
   const servers = useAuthStore(state => state.servers);
   const activeServerId = useAuthStore(state => state.activeServerId);
@@ -68,7 +68,7 @@ export default function LibraryRules() {
   // preserve visibility even when returning to page zero.
   const loadPage = async (
     index: number,
-    context: QueryContext,
+    context: LibraryRulesQueryContext,
     showAfterLoad: boolean,
   ) => {
     if (isRunning) return;
@@ -97,7 +97,7 @@ export default function LibraryRules() {
       setError(t('settings.libraryRulesInvalid', { count: issues.length }));
       return;
     }
-    const context: QueryContext = {
+    const context: LibraryRulesQueryContext = {
       ruleJson,
       entity: document.entity,
       scopes: currentScope.pairs.map(scope => ({ ...scope })),

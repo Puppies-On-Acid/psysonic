@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { libraryRulesEvaluate, type RuleMatch } from '@/lib/api/library';
 import { navigateToAlbumDetail } from '@/lib/navigation/albumDetailNavigation';
 import LibraryRules from './LibraryRules';
+import { clearLibraryRulesSession } from '../utils/libraryRulesSession';
 
 vi.mock('@/lib/api/library/libraryRules', () => ({
   libraryRulesEvaluate: vi.fn(),
@@ -23,6 +24,7 @@ function match(name: string, itemId: string, albumId: string | null = itemId): R
 
 describe('Settings Library Rules manual evaluation', () => {
   beforeEach(() => {
+    clearLibraryRulesSession();
     resetAllStores();
     vi.mocked(libraryRulesEvaluate).mockReset();
     vi.mocked(navigateToAlbumDetail).mockReset();
@@ -210,6 +212,52 @@ describe('Settings Library Rules manual evaluation', () => {
     expect(navigateToAlbumDetail).toHaveBeenCalledWith(
       expect.any(Function), expect.any(Object), 'album-1', { serverId: 's1' },
     );
+  });
+
+  it('restores edited rules and the last visible page after navigation without re-running', async () => {
+    vi.mocked(libraryRulesEvaluate)
+      .mockResolvedValueOnce({ items: [match('First album', 'a1')], hasMore: true })
+      .mockResolvedValueOnce({ items: [match('Second album', 'a2')], hasMore: false });
+    const user = userEvent.setup();
+    const screenA = renderWithProviders(<LibraryRules />);
+
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'View Results' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Second album')).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Group combination' }), 'all');
+    expect(await screen.findByText(/Rules or library selection changed/)).toBeInTheDocument();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(2);
+
+    screenA.unmount();
+    renderWithProviders(<LibraryRules />);
+    expect(screen.getByRole('combobox', { name: 'Group combination' })).toHaveValue('all');
+    expect(screen.getByText('Second album')).toBeInTheDocument();
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+    expect(screen.getByText(/Rules or library selection changed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows restored results as stale if the selected library changed while away', async () => {
+    vi.mocked(libraryRulesEvaluate).mockResolvedValue({
+      items: [match('Selected album', 'a1')], hasMore: true,
+    });
+    const user = userEvent.setup();
+    const screenA = renderWithProviders(<LibraryRules />);
+    await user.click(screen.getByRole('button', { name: 'Run Rules' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View Results' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'View Results' }));
+    expect(screen.getByText('Selected album')).toBeInTheDocument();
+    screenA.unmount();
+
+    useAuthStore.setState({ libraryBrowseSelectionByServer: { s1: ['other-folder'] } });
+    renderWithProviders(<LibraryRules />);
+    expect(screen.getByText('Selected album')).toBeInTheDocument();
+    expect(screen.getByText(/Rules or library selection changed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(libraryRulesEvaluate).toHaveBeenCalledTimes(1);
   });
 
   it('never starts a rule scan when no library is selected', () => {
