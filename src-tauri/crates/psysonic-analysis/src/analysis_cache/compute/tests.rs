@@ -1,5 +1,6 @@
 mod decoder;
 mod planning;
+mod spectral_seek;
 mod waveform;
 
 /// Build a mono signed-16-bit-PCM WAV from a sample buffer at `sample_rate`.
