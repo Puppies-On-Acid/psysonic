@@ -40,7 +40,17 @@ fn read_original(path: &Path) -> Result<Vec<u8>, String> {
     if !meta.is_file() || meta.len() == 0 || meta.len() > MAX_FILE_BYTES {
         return Err(format!("Select a complete audio file between 1 byte and {MAX_FILE_BYTES} bytes"));
     }
-    fs::read(path).map_err(|e| format!("Cannot read original audio: {e}"))
+    let bytes = fs::read(path).map_err(|e| format!("Cannot read original audio: {e}"))?;
+    let after = fs::metadata(path).map_err(|e| format!("Cannot recheck original audio: {e}"))?;
+    // Reject a file edited while being read; never mix a partial or mutable
+    // source. The normal production original-identity guard is separate.
+    if bytes.len() as u64 != meta.len()
+        || after.len() != meta.len()
+        || after.modified().ok() != meta.modified().ok()
+    {
+        return Err("The original audio changed during the read".into());
+    }
+    Ok(bytes)
 }
 
 fn to_48k_stereo(input: &SpectralAuditionPcm) -> Result<Vec<f32>, String> {
