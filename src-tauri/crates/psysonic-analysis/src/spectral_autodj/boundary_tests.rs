@@ -58,7 +58,8 @@ fn stereo_tone(first_hz: f64, second_hz: f64, sample_rate: u32) -> Vec<u8> {
         } else {
             second_hz
         };
-        let value = (12_000.0 * (2.0 * PI * frequency * i as f64 / sample_rate as f64).sin()) as i16;
+        let value =
+            (12_000.0 * (2.0 * PI * frequency * i as f64 / sample_rate as f64).sin()) as i16;
         samples.extend_from_slice(&[value, value]);
     }
     pcm16_wav(&samples, sample_rate, 2)
@@ -124,8 +125,13 @@ fn rejects_missing_scope_revision_and_zero_generation() {
         SpectralSourceToken { content_revision: String::new(), ..identity() },
         SpectralSourceToken { generation: 0, ..identity() },
     ] {
-        let candidate = SpectralBoundaryJob { source: missing.clone(), ..job(Boundary::Intro, 0.25) };
-        assert!(analyze_verified_boundary_bytes(&wav, &candidate, || Some(missing.clone())).is_none());
+        let candidate = SpectralBoundaryJob {
+            source: missing.clone(),
+            ..job(Boundary::Intro, 0.25)
+        };
+        assert!(
+            analyze_verified_boundary_bytes(&wav, &candidate, || Some(missing.clone())).is_none()
+        );
     }
 }
 
@@ -164,7 +170,9 @@ fn invalid_byte_buffer_window_and_untrusted_source_fail_closed() {
     let wav = stereo_tone(80.0, 80.0, 48_000);
     for seconds in [0.0, -1.0, 7.0, f64::NAN, f64::INFINITY] {
         assert!(
-            analyze_verified_boundary_bytes(&wav, &job(Boundary::Intro, seconds), || Some(identity()))
+            analyze_verified_boundary_bytes(&wav, &job(Boundary::Intro, seconds), || {
+                Some(identity())
+            })
                 .is_none(),
         );
     }
