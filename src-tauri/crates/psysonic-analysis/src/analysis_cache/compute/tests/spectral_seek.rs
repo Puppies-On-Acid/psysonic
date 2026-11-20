@@ -266,12 +266,8 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
         let mut late_best_shift_frames = 0isize;
         let mut late_best_probe_mean = f64::INFINITY;
         for shift in -2048isize..=2048 {
-            let reference_start = nominal_start as isize
-                + shift
-                + late_probe_frame as isize;
-            if reference_start < 0
-                || reference_start as usize + late_probe_frames > full_frames
-            {
+            let reference_start = nominal_start as isize + shift + late_probe_frame as isize;
+            if reference_start < 0 || reference_start as usize + late_probe_frames > full_frames {
                 continue;
             }
             let mut error_sum = 0.0f64;
@@ -279,9 +275,8 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
             for offset in (0..late_probe_frames).step_by(16) {
                 let sample_index = (late_probe_frame + offset) * CHANNELS;
                 let reference_index = (reference_start as usize + offset) * CHANNELS;
-                error_sum += f64::from(
-                    (tail.pcm[sample_index] - full_pcm[reference_index]).abs(),
-                );
+                let sample_error = (tail.pcm[sample_index] - full_pcm[reference_index]).abs();
+                error_sum += f64::from(sample_error);
                 count += 1;
             }
             let mean = error_sum / count as f64;
