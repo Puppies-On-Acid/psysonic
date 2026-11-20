@@ -152,10 +152,9 @@ mod tests {
             .expect("valid offline reference");
         assert!(gate.select_source(Some(selected.clone())));
 
-        let worker = try_spawn_with_available_bytes(&gate, work, bytes, deadline(), || {
-            Some(source())
-        })
-        .expect("work admitted");
+        let worker =
+            try_spawn_with_available_bytes(&gate, work, bytes, deadline(), || Some(source()))
+                .expect("work admitted");
         let measured = worker.await.expect("worker joined").expect("valid bands");
         assert_eq!(measured.source, selected);
         assert_eq!(measured.bands, expected);
@@ -214,14 +213,11 @@ mod tests {
         );
         assert!(expired.is_none());
 
-        let valid = try_spawn_with_available_bytes(
-            &gate,
-            job(selected),
-            tone_wav(),
-            deadline(),
-            || Some(source()),
-        )
-        .expect("rejected jobs did not occupy a slot");
+        let valid =
+            try_spawn_with_available_bytes(&gate, job(selected), tone_wav(), deadline(), || {
+                Some(source())
+            })
+            .expect("rejected jobs did not occupy a slot");
         assert!(valid.await.expect("worker joined").is_some());
     }
 
@@ -270,14 +266,11 @@ mod tests {
 
         resume_tx.send(()).expect("resume stale worker");
         assert!(worker.await.expect("worker joined").is_none());
-        let replacement = try_spawn_with_available_bytes(
-            &gate,
-            job(first),
-            tone_wav(),
-            deadline(),
-            || Some(source()),
-        )
-        .expect("slot released after stale worker exits");
+        let replacement =
+            try_spawn_with_available_bytes(&gate, job(first), tone_wav(), deadline(), || {
+                Some(source())
+            })
+            .expect("slot released after stale worker exits");
         assert!(replacement.await.expect("worker joined").is_some());
     }
 
@@ -301,14 +294,11 @@ mod tests {
         )
         .expect("first admitted");
         assert!(worker.await.is_err());
-        let replacement = try_spawn_with_available_bytes(
-            &gate,
-            job(source()),
-            tone_wav(),
-            deadline(),
-            || Some(source()),
-        )
-        .expect("lease released on worker panic");
+        let replacement =
+            try_spawn_with_available_bytes(&gate, job(source()), tone_wav(), deadline(), || {
+                Some(source())
+            })
+            .expect("lease released on worker panic");
         assert!(replacement.await.expect("worker joined").is_some());
     }
 }
