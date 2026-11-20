@@ -11,6 +11,7 @@ pub mod analysis_runtime;
 mod codec;
 pub mod commands;
 pub mod raw_probe;
+pub mod spectral_autodj;
 pub mod track_analysis_plan;
 pub mod track_enrichment;
 

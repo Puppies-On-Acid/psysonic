@@ -52,6 +52,10 @@ The initial **bass-handoff heuristic is a Psysonic experiment, not a validated r
 
 **Exit:** deterministic fixture correctness, finite outputs, bounded latency and measured CPU/memory against current analysis baseline.
 
+**Phase 2A code checkpoint (candidate, pending Windows verification):** A standalone, off-thread-only Rust analyzer has been added at \`src-tauri/crates/psysonic-analysis/src/spectral_autodj.rs\` and exported from the analysis crate. It accepts predecoded interleaved PCM with explicit rate/channels and intro/outro selection. Work is bounded to up to six boundary seconds, at most eight FFT windows per channel and FFT sizes no greater than 8192; it uses Hann-windowed three-band RMS energy, preserving stereo energy even for inverted-phase material. Inputs below 8 kHz, above 192 kHz, too short, silent or malformed safely return no analysis. No new dependencies, persistence, streams, IPC, live calls or changes to the existing sound path. Eight new synthetic Rust unit tests cover tones across rates, RMS units, boundary selection, stereo, invalid data and determinism. **The Rust code has not been compiled or tested on the owner's Windows machine, and this stage is NOT yet accepted.** The FFT math was independently cross-checked with NumPy sample spectra only, not as Rust-execution evidence.
+
+**Phase 2B still pending:** safe access to original decoded intro/outro PCM for the current and next track, cancellation/identity/version safeguards, concurrency, timeout/resource measurements and connection to the ephemeral TypeScript planner. Prefer reusing the existing Rust analysis worker and decoder, but do not automatically schedule an extra full-track decode or transmit PCM through Tauri. User-facing or persisted analysis changes require a separate owner decision.
+
 ## Phase 3 — isolated Rust per-source DSP and offline renderer
 
 **Status:** not started.
