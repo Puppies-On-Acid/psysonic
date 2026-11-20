@@ -96,7 +96,11 @@ fn encode_m4a_with_ffmpeg(wav: &Path, output: &Path, pns_enabled: bool) {
 /// Independent full-from-start reference using the existing Symphonia setup.
 /// Test-only and strictly bounded to a 16-second, two-channel fixture.
 fn full_decode_reference(bytes: &[u8]) -> Vec<f32> {
-    let mut session = open_decode_session(bytes, None).expect("probe synthetic M4A");
+    full_decode_reference_at_rate(bytes, SAMPLE_RATE)
+}
+
+fn full_decode_reference_at_rate(bytes: &[u8], expected_rate: u32) -> Vec<f32> {
+    let mut session = open_decode_session(bytes, None).expect("probe synthetic audio");
     let mut pcm = Vec::new();
     let mut scratch = Vec::new();
     let mut reached_end = false;
@@ -116,7 +120,7 @@ fn full_decode_reference(bytes: &[u8]) -> Vec<f32> {
             .decoder
             .decode(&packet)
             .expect("decode reference packet");
-        assert_eq!(decoded.spec().rate(), SAMPLE_RATE);
+        assert_eq!(decoded.spec().rate(), expected_rate);
         assert_eq!(decoded.spec().channels().count(), CHANNELS);
         decoded.copy_to_vec_interleaved(&mut scratch);
         assert!(scratch.len().is_multiple_of(CHANNELS));
@@ -129,7 +133,7 @@ fn full_decode_reference(bytes: &[u8]) -> Vec<f32> {
 
     assert!(reached_end, "reference exceeded 4096 packets");
     assert!(
-        (SAMPLE_RATE as usize * CHANNELS * 11..=MAX_REFERENCE_SAMPLES).contains(&pcm.len()),
+        (expected_rate as usize * CHANNELS * 11..=MAX_REFERENCE_SAMPLES).contains(&pcm.len()),
         "unexpected full decoded fixture size: {} samples",
         pcm.len()
     );
@@ -333,34 +337,47 @@ fn spectral_seek_long_m4a_without_pns_matches_full_decode_reference() {
     calibrate_long_m4a_seek(false);
 }
 
-/// Locally encode the same non-copyright synthetic WAV as variable-bitrate MP3.
-fn encode_vbr_mp3_with_ffmpeg(wav: &Path, output: &Path) {
+/// Locally encode the same non-copyright synthetic WAV into an MP3.
+/// All codec/muxer arguments are explicit so test files have known metadata.
+fn encode_mp3_with_ffmpeg(wav: &Path, output: &Path, options: &[&str]) {
     let binary = std::env::var_os("PSYSONIC_TEST_FFMPEG")
         .unwrap_or_else(|| std::ffi::OsString::from("ffmpeg"));
     let result = Command::new(binary)
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(wav)
-        .args(["-c:a", "libmp3lame", "-q:a", "2"])
+        .args(options)
         .arg(output)
         .output()
-        .expect("FFmpeg with libmp3lame is required for the manual VBR probe");
+        .expect("FFmpeg with libmp3lame is required for the manual MP3 probes");
     assert!(
         result.status.success(),
-        "FFmpeg could not encode VBR MP3: {}",
+        "FFmpeg could not encode synthetic MP3: {}",
         String::from_utf8_lossy(&result.stderr)
     );
+}
+
+fn encode_vbr_mp3_with_ffmpeg(wav: &Path, output: &Path) {
+    encode_mp3_with_ffmpeg(wav, output, &["-c:a", "libmp3lame", "-q:a", "2"]);
 }
 
 /// Test-only full-reference endpoint: no unbounded full-file decode in the
 /// production window extractor. The generated source is exactly 12 seconds.
 fn synthetic_reference_end(bytes: &[u8], decoded_frames: usize) -> usize {
+    synthetic_reference_end_at_rate(bytes, decoded_frames, SAMPLE_RATE)
+}
+
+fn synthetic_reference_end_at_rate(
+    bytes: &[u8],
+    decoded_frames: usize,
+    sample_rate: u32,
+) -> usize {
     let session = open_decode_session(bytes, None).expect("probe synthetic codec timeline");
     let reported_frames = session
         .timeline_hint
         .expect("codec must report total frames");
     let endpoint = usize::try_from(reported_frames).expect("bounded generated fixture");
     assert!(
-        (SAMPLE_RATE as usize * 11..=decoded_frames).contains(&endpoint),
+        (sample_rate as usize * 11..=decoded_frames).contains(&endpoint),
         "inconsistent container endpoint: {endpoint}, decoded {decoded_frames}"
     );
     endpoint
@@ -655,4 +672,162 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
         bad_cases, 0,
         "VBR MP3 exact-seek mismatch in {bad_cases}/3 synthetic windows"
     );
+}
+
+
+/// Alternate common rate: a 44.1 kHz LAME-tagged VBR MP3 must honor its
+/// *own* encoder delay and padding, not a 48 kHz fixture-specific offset.
+/// FFmpeg resamples the existing deterministic 48 kHz WAV; no user audio.
+#[test]
+#[ignore = "manual: ffmpeg 44.1kHz VBR MP3 strict reference/gapless calibration"]
+fn spectral_codec_vbr_mp3_44100_gapless_calibration() {
+    const RATE: u32 = 44_100;
+
+    let scratch = ScratchAudioDir::create();
+    let wav = scratch.join("synthetic.wav");
+    let mp3 = scratch.join("synthetic-44100-vbr.mp3");
+    std::fs::write(&wav, synthetic_stereo_wav()).expect("write synthetic WAV");
+    encode_mp3_with_ffmpeg(
+        &wav,
+        &mp3,
+        &["-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2"],
+    );
+    let bytes = std::fs::read(mp3).expect("read locally encoded 44.1kHz MP3");
+    let full_pcm = full_decode_reference_at_rate(&bytes, RATE);
+    let decoded_frames = full_pcm.len() / CHANNELS;
+    let presentation_frames = synthetic_reference_end_at_rate(&bytes, decoded_frames, RATE);
+    let session = open_decode_session(&bytes, None).expect("probe 44.1kHz MP3");
+    let track = session
+        .format
+        .tracks()
+        .iter()
+        .find(|track| track.id == session.track_id)
+        .expect("selected MP3 track");
+    let delay = usize::try_from(track.delay.expect("LAME delay required"))
+        .expect("bounded encoder delay");
+    let padding = usize::try_from(track.padding.expect("LAME padding required"))
+        .expect("bounded encoder padding");
+    let reference_end = presentation_frames
+        .checked_add(delay)
+        .expect("bounded raw reference endpoint");
+    assert_eq!(
+        reference_end.checked_add(padding),
+        Some(decoded_frames),
+        "44.1kHz LAME metadata must explain the entire raw decoder output"
+    );
+
+    println!(
+        "spectral-codec mp3-vbr-44100 rate={RATE} decoded={decoded_frames} \
+         presentation={presentation_frames} delay={delay} padding={padding}"
+    );
+    for seconds in [0.213_f64, 1.137, 3.817] {
+        let frames = (seconds * f64::from(RATE)).ceil() as usize;
+        let reference = strict_reference_slice(&full_pcm, reference_end, frames);
+        let actual = decode_spectral_pcm_window(&bytes, Boundary::Outro, seconds, || true)
+            .expect("44.1kHz MP3 seek must produce a full bounded window");
+        assert_eq!(actual.sample_rate, RATE);
+        assert_eq!(usize::from(actual.channels), CHANNELS);
+        assert_eq!(actual.pcm.len(), reference.len());
+        let max_error = actual
+            .pcm
+            .iter()
+            .zip(reference)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        println!(
+            "spectral-codec mp3-vbr-44100 window={seconds:.3} \
+             max_pcm_error={max_error:.8}"
+        );
+        assert!(
+            max_error <= 1.0e-5,
+            "44.1kHz VBR MP3 full PCM mismatch at {seconds:.3}s: {max_error}"
+        );
+    }
+}
+
+/// Missing Xing/LAME metadata is a diagnostic, NOT a claim of gapless support.
+/// FFmpeg's MP3 muxer -write_xing 0 omits the duration/delay information.
+/// The demuxer may estimate duration from CBR file length, but without delay
+/// and padding there is no verified presentation-to-raw sample alignment.
+/// Inspect only bounded results; never promote these to strict compatibility.
+#[test]
+#[ignore = "manual: ffmpeg CBR MP3 without Xing/LAME header, fallback characterization"]
+fn spectral_codec_mp3_without_xing_metadata_diagnostic() {
+    let scratch = ScratchAudioDir::create();
+    let wav = scratch.join("synthetic.wav");
+    let mp3 = scratch.join("synthetic-no-xing.mp3");
+    std::fs::write(&wav, synthetic_stereo_wav()).expect("write synthetic WAV");
+    encode_mp3_with_ffmpeg(
+        &wav,
+        &mp3,
+        &[
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            "-write_xing",
+            "0",
+            "-id3v2_version",
+            "0",
+        ],
+    );
+    let bytes = std::fs::read(mp3).expect("read synthetic header-free MP3");
+    let session = open_decode_session(&bytes, None).expect("probe no-Xing MP3");
+    let track = session
+        .format
+        .tracks()
+        .iter()
+        .find(|track| track.id == session.track_id)
+        .expect("selected MP3 audio track");
+    assert!(
+        track.delay.is_none() && track.padding.is_none(),
+        "no-Xing control must not expose LAME encoder delay or padding"
+    );
+    let declared = session.timeline_hint;
+    let raw_pcm = full_decode_reference(&bytes);
+    let raw_frames = raw_pcm.len() / CHANNELS;
+    println!(
+        "spectral-codec mp3-no-xing reported_frames={declared:?} \
+         raw_frames={raw_frames} delay={:?} padding={:?}",
+        track.delay,
+        track.padding
+    );
+
+    // Source tokens can cancel without any decoder output regardless of the
+    // presence or absence of gapless metadata.
+    assert!(
+        decode_spectral_pcm_window(&bytes, Boundary::Outro, 0.213, || false).is_none()
+    );
+    for seconds in [0.213_f64, 1.137, 3.817] {
+        let wanted_frames = (seconds * f64::from(SAMPLE_RATE)).ceil() as usize;
+        match decode_spectral_pcm_window(&bytes, Boundary::Outro, seconds, || true) {
+            None => {
+                println!(
+                    "spectral-codec mp3-no-xing window={seconds:.3} \
+                     outcome=neutral-fallback"
+                );
+            }
+            Some(actual) => {
+                assert_eq!(actual.sample_rate, SAMPLE_RATE);
+                assert_eq!(usize::from(actual.channels), CHANNELS);
+                assert_eq!(actual.pcm.len(), wanted_frames * CHANNELS);
+                assert!(actual.pcm.iter().all(|sample| sample.is_finite()));
+                let raw_start = raw_frames
+                    .checked_sub(wanted_frames)
+                    .expect("synthetic reference must exceed requested tail");
+                let reference = &raw_pcm[raw_start * CHANNELS..];
+                let raw_tail_error = actual
+                    .pcm
+                    .iter()
+                    .zip(reference)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                println!(
+                    "spectral-codec mp3-no-xing window={seconds:.3} \
+                     outcome=bounded-pcm raw_tail_error={raw_tail_error:.8} \
+                     note=no-gapless-timeline-proof"
+                );
+            }
+        }
+    }
 }
