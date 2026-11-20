@@ -373,4 +373,29 @@ mod tests {
         assert!(output.join("ANSWER_KEY.txt").exists());
         fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn existing_audition_files_are_never_overwritten() {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "psysonic_spectral_preserve_test_{}_{}", std::process::id(), seed
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.wav");
+        let b = dir.join("b.wav");
+        let output = dir.join("rendered");
+        fs::create_dir_all(&output).unwrap();
+        write_stereo_pcm16_wav(&a, &wave(62.0)).unwrap();
+        write_stereo_pcm16_wav(&b, &wave(88.0)).unwrap();
+        let existing = output.join("Sample_1.wav");
+        fs::write(&existing, b"original user audio - must not change").unwrap();
+
+        assert!(render_audition_pair(&a, &b, &output, 3.0, 11).is_err());
+        assert_eq!(fs::read(existing).unwrap(), b"original user audio - must not change");
+        assert!(!output.join("Sample_2.wav").exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
