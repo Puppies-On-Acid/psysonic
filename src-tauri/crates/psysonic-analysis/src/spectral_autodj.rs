@@ -1,7 +1,8 @@
-//! Experimental offline frequency analysis for Spectral AutoDJ.
+//! Bounded, channel-preserving Spectral AutoDJ analysis and trial contracts.
 //!
-//! Accepts decoded interleaved PCM; never fetches streams or modifies playback.
-//! Consumers must run this on a worker, not on the realtime audio thread.
+//! Accepts owned decoded PCM and verified originals; never fetches media.
+//! Background analysis runs off the realtime audio thread. Live EQ is an
+//! explicitly opt-in, isolated Psysonic listening experiment.
 
 use std::f64::consts::PI;
 
@@ -264,27 +265,6 @@ pub fn plan_spectral_bass_handoff(
     -4.0 * strength
 }
 
-#[cfg(test)]
-mod audition_contract_tests {
-    use super::*;
-
-    #[test]
-    fn duplicate_planner_policy_is_neutral_for_unknown_and_invalid() {
-        let heavy = SpectralBandRms { low: 0.8, mid: 0.1, high: 0.1 };
-        let light = SpectralBandRms { low: 0.1, mid: 0.45, high: 0.45 };
-        assert_eq!(plan_spectral_bass_handoff(Some(heavy), None), 0.0);
-        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(light)), 0.0);
-        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(heavy)), -4.0);
-        assert_eq!(
-            plan_spectral_bass_handoff(
-                Some(heavy),
-                Some(SpectralBandRms { low: f32::NAN, mid: 1.0, high: 0.0 })
-            ),
-            0.0
-        );
-    }
-}
-
 /// In-place radix-2 FFT; this is offline bounded work, never a rodio/CPAL hook.
 fn fft_in_place(re: &mut [f64], im: &mut [f64]) {
     let n = re.len();
@@ -475,3 +455,25 @@ pub mod scheduling;
 
 #[cfg(test)]
 mod boundary_tests;
+
+#[cfg(test)]
+mod audition_contract_tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_planner_policy_is_neutral_for_unknown_and_invalid() {
+        let heavy = SpectralBandRms { low: 0.8, mid: 0.1, high: 0.1 };
+        let light = SpectralBandRms { low: 0.1, mid: 0.45, high: 0.45 };
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), None), 0.0);
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(light)), 0.0);
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(heavy)), -4.0);
+        assert_eq!(
+            plan_spectral_bass_handoff(
+                Some(heavy),
+                Some(SpectralBandRms { low: f32::NAN, mid: 1.0, high: 0.0 })
+            ),
+            0.0
+        );
+    }
+}
+
