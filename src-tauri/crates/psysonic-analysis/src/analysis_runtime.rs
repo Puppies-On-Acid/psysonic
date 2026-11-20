@@ -30,7 +30,9 @@ pub(crate) use cpu_seed::spectral_ordinary_pipeline_idle_epoch;
 #[cfg(test)]
 pub(crate) use spectral_priority::ActivityEpoch;
 pub(crate) use spectral_priority::{reserve_spectral_cpu, SpectralCpuReservation};
-pub(crate) use trusted_revision::commit_trusted_enrichment_if_current;
+pub(crate) use trusted_revision::{
+    commit_trusted_enrichment_if_current, trusted_revision_is_current,
+};
 pub use trusted_revision::{
     begin_trusted_revision, reserve_trusted_analysis_fetch, TrustedAnalysisFetchPermit,
 };

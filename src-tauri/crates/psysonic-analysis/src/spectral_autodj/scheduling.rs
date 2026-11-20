@@ -52,7 +52,7 @@ where
     )
 }
 
-fn try_spawn_verified_with_probe<F, P, R>(
+pub(super) fn try_spawn_verified_with_probe<F, P, R>(
     gate: &Arc<SpectralAdmissionGate>,
     job: SpectralBoundaryJob,
     original: SpectralOwnedOriginal,

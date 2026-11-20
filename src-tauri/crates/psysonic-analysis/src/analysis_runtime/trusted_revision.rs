@@ -143,6 +143,33 @@ pub(super) fn trusted_revision_generation_is_current(
         .is_some_and(|current| current.revision == revision && current.generation == generation)
 }
 
+
+/// Fail closed without allocating or blocking if the trusted-revision registry
+/// is absent, poisoned, or busy. A spectral result cannot outlive replacement
+/// of the authenticated original, even for the same track ID.
+pub(crate) fn trusted_revision_is_current(
+    server_id: &str,
+    track_id: &str,
+    revision: &str,
+    generation: u64,
+) -> bool {
+    if server_id.trim().is_empty() || track_id.trim().is_empty()
+        || revision.trim().is_empty() || generation == 0
+    {
+        return false;
+    }
+    let key = canonical_activation_key(server_id, track_id);
+    let Some(registry) = TRUSTED_ACTIVATIONS.get() else {
+        return false;
+    };
+    let Ok(state) = registry.try_lock() else {
+        return false;
+    };
+    state.current_by_track.get(&key).is_some_and(|current| {
+        current.revision == revision && current.generation == generation
+    })
+}
+
 pub fn begin_trusted_revision(server_id: &str, track_id: &str, revision: &str) -> u64 {
     let key = canonical_activation_key(server_id, track_id);
     let mut state = TRUSTED_ACTIVATIONS
