@@ -63,6 +63,9 @@ where
     let params = track.codec_params.as_ref()?.audio()?;
     let sample_rate = params.sample_rate?;
     let channels = params.channels.as_ref()?.count();
+    // Presentation timestamps may use a container timebase rather than samples.
+    // Without this mapping, compressed outro packet pre-roll cannot be trimmed.
+    let time_base = track.time_base;
     if !(MIN_RATE..=MAX_RATE).contains(&sample_rate) || !(1..=8).contains(&channels) {
         return None;
     }
@@ -74,6 +77,7 @@ where
         return None;
     }
 
+    let mut required_seek_ts = None;
     if boundary == Boundary::Outro {
         // A reliable seek coordinate is mandatory. Never replay a long track
         // from byte zero just to locate a late transition window.
@@ -83,8 +87,11 @@ where
         }
         let start = total.saturating_sub(target_frames);
         if start > 0 {
+            // Symphonia seeks to a packet *at or before* the requested instant.
+            // Retain its exact requested timestamp to discard pre-roll PCM.
+            time_base?;
             let time = Time::try_from_secs_f64(start as f64 / sample_rate as f64)?;
-            format
+            let seeked_to = format
                 .seek(
                     SeekMode::Accurate,
                     SeekTo::Time {
@@ -93,6 +100,11 @@ where
                     },
                 )
                 .ok()?;
+            if seeked_to.track_id != track_id || seeked_to.actual_ts > seeked_to.required_ts {
+                return None;
+            }
+            decoder.reset();
+            required_seek_ts = Some(seeked_to.required_ts);
         }
     }
 
@@ -124,15 +136,35 @@ where
             return None;
         }
         let available_frames = packet_pcm.len() / channels;
-        let take_frames = available_frames.min(target_frames - decoded_frames);
-        let take_samples = take_frames * channels;
-        if packet_pcm[..take_samples]
+        let skip_frames = if let Some(required_ts) = required_seek_ts {
+            let time_base = time_base?;
+            let target_time = time_base.calc_time(required_ts)?.as_secs_f64();
+            let packet_time = time_base.calc_time(packet.pts)?.as_secs_f64();
+            let fractional_skip = (target_time - packet_time) * f64::from(sample_rate);
+            // Never shift a compressed window later because a seek overshot,
+            // a timestamp was missing, or the timestamp base is inconsistent.
+            if !fractional_skip.is_finite() || fractional_skip < -0.5 {
+                return None;
+            }
+            let skip = fractional_skip.round() as usize;
+            if skip >= available_frames {
+                continue;
+            }
+            required_seek_ts = None;
+            skip
+        } else {
+            0
+        };
+        let take_frames = (available_frames - skip_frames).min(target_frames - decoded_frames);
+        let take_start = skip_frames * channels;
+        let take_end = (skip_frames + take_frames) * channels;
+        if packet_pcm[take_start..take_end]
             .iter()
             .any(|sample| !sample.is_finite() || sample.abs() > 8.0)
         {
             return None;
         }
-        pcm.extend_from_slice(&packet_pcm[..take_samples]);
+        pcm.extend_from_slice(&packet_pcm[take_start..take_end]);
         decoded_frames += take_frames;
         if decoded_frames == target_frames {
             break;

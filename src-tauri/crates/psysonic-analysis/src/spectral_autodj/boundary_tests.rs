@@ -222,3 +222,30 @@ fn existing_m4a_fixture_decodes_without_downmixing() {
     assert!((4_300..=4_500).contains(&(pcm.pcm.len() / usize::from(pcm.channels))));
     assert!(pcm.pcm.iter().all(|sample| sample.is_finite()));
 }
+
+#[test]
+fn outro_pcm_window_starts_at_exact_sample_after_packet_aligned_seek() {
+    let rate = 48_000u32;
+    let frames = rate as usize * 2;
+    let mut samples = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        let value = ((i * 17 % 20_001) as i16) - 10_000;
+        samples.extend_from_slice(&[value, value]);
+    }
+    let wav = pcm16_wav(&samples, rate, 2);
+    // Deliberately not aligned to typical demuxer packet sizes.
+    let window_seconds = 0.213f64;
+    let want_frames = (window_seconds * f64::from(rate)).ceil() as usize;
+    let result = decode_spectral_pcm_window(&wav, Boundary::Outro, window_seconds, || true)
+        .expect("sample-aligned PCM outro");
+    assert_eq!(result.pcm.len(), want_frames * 2);
+    assert_eq!(result.channels, 2);
+    for offset in [0usize, 1, 13, 255, want_frames - 1] {
+        let expected = f32::from(samples[(frames - want_frames + offset) * 2]) / 32768.0;
+        let actual = result.pcm[offset * 2];
+        assert!(
+            (actual - expected).abs() < 0.0001,
+            "outro offset {offset}: expected {expected}, got {actual}"
+        );
+    }
+}
