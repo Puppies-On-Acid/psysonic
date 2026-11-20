@@ -42,6 +42,7 @@ pub mod radio_commands;
 mod sink_swap;
 mod source_build;
 mod sources;
+pub mod spectral_audition;
 pub mod spectrum;
 mod spectrum_dsp;
 mod state;
