@@ -142,14 +142,32 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
 
     let full_pcm = full_decode_reference(&m4a);
     let full_frames = full_pcm.len() / CHANNELS;
-    let reported_frames = open_decode_session(&m4a, None)
-        .expect("probe container timeline")
-        .timeline_hint;
+    let session = open_decode_session(&m4a, None).expect("probe container timeline");
+    let reported_frames = session.timeline_hint.expect("container must report frames");
+    let presentation_end = usize::try_from(reported_frames).expect("bounded fixture duration");
+    assert!(
+        presentation_end <= full_frames,
+        "container endpoint exceeds the full decoded PCM reference"
+    );
+    assert!(
+        presentation_end >= SAMPLE_RATE as usize * 11,
+        "container endpoint is unexpectedly short"
+    );
+    let track = session
+        .format
+        .tracks()
+        .iter()
+        .find(|track| track.id == session.track_id)
+        .expect("selected audio track");
     println!(
         "spectral-seek fixture source_frames={} decoded_frames={full_frames} \
-         container_frames={reported_frames:?} decoded_minus_source={}",
+         container_frames={reported_frames} delay={:?} padding={:?} \
+         decoded_minus_source={} decoded_minus_container={}",
         DURATION_SECONDS * SAMPLE_RATE as usize,
-        full_frames as isize - (DURATION_SECONDS * SAMPLE_RATE as usize) as isize
+        track.delay,
+        track.padding,
+        full_frames as isize - (DURATION_SECONDS * SAMPLE_RATE as usize) as isize,
+        full_frames - presentation_end
     );
 
     let mut failing_windows = 0usize;
@@ -164,7 +182,14 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
         let requested_frames = (window_sec * f64::from(SAMPLE_RATE)).ceil() as usize;
         let requested_samples = requested_frames * CHANNELS;
         assert_eq!(tail.pcm.len(), requested_samples);
-        let reference = &full_pcm[full_pcm.len() - requested_samples..];
+        // The full raw decode may contain encoder padding after the timeline
+        // endpoint. Use the exact endpoint reported by the demuxer, rather
+        // than the final raw decoder sample, for this reference comparison.
+        let reference_end = presentation_end * CHANNELS;
+        let reference_start = reference_end
+            .checked_sub(requested_samples)
+            .expect("requested tail exceeds the presentation timeline");
+        let reference = &full_pcm[reference_start..reference_end];
         let max_error = tail
             .pcm
             .iter()
@@ -189,7 +214,7 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
         // Diagnostic only: locate a possible constant offset between the
         // decoded reference and demuxer presentation timeline. Never apply
         // the shift to the decoder or relax the strict original assertion.
-        let nominal_start = full_frames - requested_frames;
+        let nominal_start = presentation_end - requested_frames;
         let mut best_shift_frames = 0isize;
         let mut best_probe_mean = f64::INFINITY;
         for shift in -4096isize..=4096 {

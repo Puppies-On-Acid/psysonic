@@ -5,7 +5,7 @@
 //! All failures are neutral fallbacks for the caller.
 
 use symphonia::core::formats::{SeekMode, SeekTo};
-use symphonia::core::units::Time;
+use symphonia::core::units::{TimeBase, Timestamp};
 
 use super::decoder::{open_decode_session, DecodeSession};
 use crate::spectral_autodj::Boundary;
@@ -23,6 +23,48 @@ pub(crate) struct SpectralPcmWindow {
     pub(crate) pcm: Vec<f32>,
     pub(crate) sample_rate: u32,
     pub(crate) channels: u16,
+}
+
+/// Convert a decoded-frame offset to the track's timestamp units, without
+/// passing through seconds or losing a frame to nanosecond truncation.
+/// Reject coarse timebases that cannot represent individual PCM frames.
+fn frame_timestamp(
+    origin: Timestamp,
+    frame: usize,
+    sample_rate: u32,
+    time_base: TimeBase,
+) -> Option<Timestamp> {
+    let sample_ticks = u128::from(time_base.numer.get())
+        .checked_mul(u128::from(sample_rate))?;
+    let ticks_per_second = u128::from(time_base.denom.get());
+    if sample_ticks > ticks_per_second {
+        return None;
+    }
+    let numerator = (frame as u128).checked_mul(ticks_per_second)?;
+    let rounded = numerator.checked_add(sample_ticks / 2)? / sample_ticks;
+    let offset = i64::try_from(rounded).ok()?;
+    Some(Timestamp::new(origin.get().checked_add(offset)?))
+}
+
+/// Calculate the number of decoded frames from a packet PTS to a target PTS.
+/// The denominator is the track's integer timebase, not floating seconds.
+fn frames_until_timestamp(
+    target: Timestamp,
+    packet: Timestamp,
+    sample_rate: u32,
+    time_base: TimeBase,
+) -> Option<usize> {
+    let tick_difference = i128::from(target.get()) - i128::from(packet.get());
+    if tick_difference < 0 {
+        return None;
+    }
+    let numerator = u128::try_from(tick_difference)
+        .ok()?
+        .checked_mul(u128::from(time_base.numer.get()))?
+        .checked_mul(u128::from(sample_rate))?;
+    let denominator = u128::from(time_base.denom.get());
+    let rounded = numerator.checked_add(denominator / 2)? / denominator;
+    usize::try_from(rounded).ok()
 }
 
 /// Extract a bounded, interleaved window while preserving every channel.
@@ -70,6 +112,7 @@ where
     // Presentation timestamps may use a container timebase rather than samples.
     // Without this mapping, compressed outro packet pre-roll cannot be trimmed.
     let time_base = track.time_base;
+    let start_ts = track.start_ts;
     if !(MIN_RATE..=MAX_RATE).contains(&sample_rate) || !(1..=8).contains(&channels) {
         return None;
     }
@@ -82,7 +125,7 @@ where
     }
 
     let mut prefix_frames_to_discard = 0usize;
-    let mut target_time_after_seek = None;
+    let mut target_ts_after_seek = None;
     if boundary == Boundary::Outro {
         // Require a container timeline; never decode an unknown-duration
         // long file from its beginning to hunt for the outro.
@@ -96,31 +139,31 @@ where
                 // For short AAC clips this preserves the MDCT overlap state.
                 prefix_frames_to_discard = start;
             } else {
-                // Seek one second BEFORE the desired window, then decode
-                // and discard that warm-up. Accurate seeks are packet-aligned.
+                // Seek one second BEFORE the desired boundary, then discard
+                // pre-roll. Keep the target independent of the packet-aligned
+                // seek result so a round-trip through seconds cannot shift it.
                 let preroll_start = start - warmup_frames;
-                let time = Time::try_from_secs_f64(preroll_start as f64 / sample_rate as f64)?;
+                let time_base = time_base?;
+                let preroll_ts =
+                    frame_timestamp(start_ts, preroll_start, sample_rate, time_base)?;
+                let target_ts = frame_timestamp(start_ts, start, sample_rate, time_base)?;
                 let seeked_to = format
                     .seek(
                         SeekMode::Accurate,
-                        SeekTo::Time {
-                            time,
-                            track_id: Some(track_id),
+                        SeekTo::Timestamp {
+                            ts: preroll_ts,
+                            track_id,
                         },
                     )
                     .ok()?;
-                if seeked_to.track_id != track_id || seeked_to.actual_ts > seeked_to.required_ts {
-                    return None;
-                }
-                let time_base = time_base?;
-                let preroll_time = time_base.calc_time(seeked_to.required_ts)?.as_secs_f64();
-                let target_time =
-                    preroll_time + (start - preroll_start) as f64 / f64::from(sample_rate);
-                if !target_time.is_finite() {
+                if seeked_to.track_id != track_id
+                    || seeked_to.required_ts != preroll_ts
+                    || seeked_to.actual_ts > preroll_ts
+                {
                     return None;
                 }
                 decoder.reset();
-                target_time_after_seek = Some(target_time);
+                target_ts_after_seek = Some(target_ts);
             }
         }
     }
@@ -160,19 +203,13 @@ where
             let skip = available_frames.min(prefix_frames_to_discard);
             prefix_frames_to_discard -= skip;
             skip
-        } else if let Some(target_time) = target_time_after_seek {
-            let time_base = time_base?;
-            let packet_time = time_base.calc_time(packet.pts)?.as_secs_f64();
-            let fractional_skip = (target_time - packet_time) * f64::from(sample_rate);
-            // Reject a seek that overshot the required audio frame.
-            if !fractional_skip.is_finite() || fractional_skip < -0.5 {
-                return None;
-            }
-            let skip = fractional_skip.round() as usize;
+        } else if let Some(target_ts) = target_ts_after_seek {
+            let skip =
+                frames_until_timestamp(target_ts, packet.pts, sample_rate, time_base?)?;
             if skip >= available_frames {
                 continue;
             }
-            target_time_after_seek = None;
+            target_ts_after_seek = None;
             skip
         } else {
             0
@@ -207,4 +244,40 @@ where
         sample_rate,
         channels: channels as u16,
     })
+}
+
+#[cfg(test)]
+mod timestamp_tests {
+    use super::{frame_timestamp, frames_until_timestamp};
+    use symphonia::core::units::{TimeBase, Timestamp};
+
+    #[test]
+    fn seek_timestamp_preserves_exact_frame_with_nonzero_origin() {
+        let tb = TimeBase::try_from_recip(48_000).unwrap();
+        let origin = Timestamp::new(1024);
+        let target = frame_timestamp(origin, 566_800, 48_000, tb).unwrap();
+        let packet = frame_timestamp(origin, 565_777, 48_000, tb).unwrap();
+        assert_eq!(target.get(), 567_824);
+        assert_eq!(
+            frames_until_timestamp(target, packet, 48_000, tb),
+            Some(1023)
+        );
+        assert_eq!(frames_until_timestamp(packet, target, 48_000, tb), None);
+    }
+
+    #[test]
+    fn timestamp_conversion_handles_fine_timebase_and_rejects_coarse() {
+        let fine = TimeBase::try_new(1, 1_000_000).unwrap();
+        let origin = Timestamp::new(-200);
+        let frame = 566_801;
+        let target = frame_timestamp(origin, frame, 48_000, fine).unwrap();
+        let packet = frame_timestamp(origin, frame - 777, 48_000, fine).unwrap();
+        assert_eq!(
+            frames_until_timestamp(target, packet, 48_000, fine),
+            Some(777)
+        );
+
+        let coarse = TimeBase::try_new(1, 1_000).unwrap();
+        assert!(frame_timestamp(origin, frame, 48_000, coarse).is_none());
+    }
 }
