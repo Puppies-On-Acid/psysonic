@@ -26,9 +26,7 @@ impl ActivityEpoch {
     fn record(&self) {
         // Saturate permanently rather than wrap to a previously accepted
         // generation; exhaustion must fail closed for future spectral work.
-        let _ = self
-            .value
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_add(1));
+        let _ = self.value.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_add(1));
     }
 }
 

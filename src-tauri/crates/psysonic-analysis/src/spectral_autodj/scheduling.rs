@@ -226,6 +226,7 @@ mod tests {
             .try_admit(&job(), 1024, Instant::now(), deadline())
             .is_some());
     }
+
     #[tokio::test]
     async fn transient_busy_then_idle_activity_never_revalidates_an_old_epoch() {
         let gate = Arc::new(SpectralAdmissionGate::new());
@@ -245,5 +246,4 @@ mod tests {
             .try_admit(&job(), 1024, Instant::now(), deadline())
             .is_some());
     }
-
 }
