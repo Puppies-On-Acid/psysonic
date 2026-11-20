@@ -116,9 +116,7 @@ where
         // A failed packet is not a reason to silently analyze a neighboring
         // region. In the experiment, missing analysis simply disables EQ.
         let decoded = decoder.decode(&packet).ok()?;
-        if decoded.spec().rate() != sample_rate
-            || decoded.spec().channels().count() != channels
-        {
+        if decoded.spec().rate() != sample_rate || decoded.spec().channels().count() != channels {
             return None;
         }
         decoded.copy_to_vec_interleaved(&mut packet_pcm);
