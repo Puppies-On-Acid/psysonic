@@ -5,7 +5,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedHead,
 
-    [switch]$IncludeBenchmarks
+    [switch]$IncludeBenchmarks,
+
+    # Explicit Windows-only fallback for a host without POSIX Bash.
+    # This does NOT waive Linux shell test/CI requirements.
+    [switch]$SkipBashDependentFlatpakTests
 )
 
 Set-StrictMode -Version Latest
@@ -75,8 +79,37 @@ finally {
 Run-Check "TypeScript type check" {
     npx tsc --noEmit
 }
-Run-Check "Frontend tests and graph checks" {
-    npm test
+if ($SkipBashDependentFlatpakTests) {
+    if ($env:OS -ne "Windows_NT") {
+        throw "Bash test fallback is allowed only on Windows."
+    }
+    Write-Host "`nBLOCKED: Four Flatpak SSH Bash execution cases require Linux/POSIX Bash." -ForegroundColor Yellow
+    Write-Host "Their five portable static checks still run below. Linux CI verification remains REQUIRED." -ForegroundColor Yellow
+
+    # Preserve every Windows-applicable component of 'npm test' instead of
+    # masking its nonzero exit due to an unavailable WSL /bin/bash.
+    Run-Check "Frontend generated metadata" {
+        npm run prebuild:release-notes
+    }
+    Run-Check "Frontend Vitest suite" {
+        npx vitest run
+    }
+    Run-Check "Portable Node script tests" {
+        node --test scripts/extract-release-section.test.mjs scripts/wix-bundle-version.test.mjs scripts/sync-version-pipeline.test.mjs scripts/sync-flatpak-metainfo-release.test.mjs scripts/prepare-flatpak-packaging.test.mjs scripts/sign-windows-updater.test.mjs
+    }
+    Run-Check "Flatpak SSH static checks (4 Bash cases blocked)" {
+        node --test --test-skip-pattern "has valid Bash syntax|commits both channels only after signed remote verification succeeds|publishes the test channel without replacing stable or rc|restores every channel when public verification fails after cutover" scripts/deploy-flatpak-ssh.test.mjs
+    }
+    Run-Check "CSS import graph" {
+        npm run check:css-imports
+    }
+    Run-Check "Feature-barrel graph" {
+        npm run dep:check:barrels
+    }
+} else {
+    Run-Check "Frontend tests and graph checks" {
+        npm test
+    }
 }
 Run-Check "Frontend lint" {
     npm run lint
@@ -99,4 +132,8 @@ if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "FAILED: $_" -ForegroundColor Yellow }
     throw "$($failures.Count) verification gate(s) failed; send the full output."
 }
-Write-Host "ALL SELECTED CHECKS PASSED" -ForegroundColor Green
+if ($SkipBashDependentFlatpakTests) {
+    Write-Host "ALL WINDOWS-APPLICABLE CHECKS PASSED; 4 Linux Bash cases remain BLOCKED (NOT passed)." -ForegroundColor Yellow
+} else {
+    Write-Host "ALL SELECTED CHECKS PASSED" -ForegroundColor Green
+}

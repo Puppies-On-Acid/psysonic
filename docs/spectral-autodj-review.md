@@ -38,4 +38,4 @@ Main paths: analysis crate spectral_autodj/{integration,owned_source,scheduling,
 .\scripts\verify-spectral-autodj.ps1 -ExpectedHead $head -IncludeBenchmarks
 ```
 
-The script checks both Rust crates, strict Clippy, Rustfmt, TS/build checks, frontend tests, ESLint/dependencies and synthetic/checked-in release decoder/FFT worker benchmarks. It is not evidence of listening quality, real CPU contention or independent review. No private server or library details may be published.
+The script checks both Rust crates, strict Clippy, Rustfmt, TypeScript, frontend tests, ESLint/dependencies and synthetic/checked-in release decoder/FFT worker benchmarks. A Windows host without a usable POSIX Bash may explicitly add `-SkipBashDependentFlatpakTests` to execute all platform-applicable checks, but **four Flatpak Bash execution cases remain blocked** until Linux CI runs them; do not describe the full `npm test` gate as passed. It is not evidence of listening quality, real CPU contention or independent review. No private server or library details may be published.
