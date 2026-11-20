@@ -1,9 +1,7 @@
 use std::cell::Cell;
 use std::f64::consts::PI;
 
-use super::{
-    analyze_verified_boundary_bytes, Boundary, SpectralBoundaryJob, SpectralSourceToken,
-};
+use super::{analyze_verified_boundary_bytes, Boundary, SpectralBoundaryJob, SpectralSourceToken};
 use crate::analysis_cache::decode_spectral_pcm_window;
 
 const SEEKABLE_M4A: &[u8] =
@@ -98,11 +96,26 @@ fn intro_and_outro_select_different_music_not_center_waveform() {
 fn rejects_server_library_track_revision_or_generation_mismatch() {
     let wav = stereo_tone(80.0, 80.0, 48_000);
     for altered in [
-        SpectralSourceToken { server_scope: "other".into(), ..identity() },
-        SpectralSourceToken { library_scope: "other".into(), ..identity() },
-        SpectralSourceToken { track_id: "other".into(), ..identity() },
-        SpectralSourceToken { content_revision: "revision-b".into(), ..identity() },
-        SpectralSourceToken { generation: 11, ..identity() },
+        SpectralSourceToken {
+            server_scope: "other".into(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            library_scope: "other".into(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            track_id: "other".into(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            content_revision: "revision-b".into(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            generation: 11,
+            ..identity()
+        },
     ] {
         assert!(
             analyze_verified_boundary_bytes(&wav, &job(Boundary::Intro, 0.25), || {
@@ -119,11 +132,26 @@ fn rejects_server_library_track_revision_or_generation_mismatch() {
 fn rejects_missing_scope_revision_and_zero_generation() {
     let wav = stereo_tone(80.0, 80.0, 48_000);
     for missing in [
-        SpectralSourceToken { server_scope: String::new(), ..identity() },
-        SpectralSourceToken { library_scope: " ".into(), ..identity() },
-        SpectralSourceToken { track_id: String::new(), ..identity() },
-        SpectralSourceToken { content_revision: String::new(), ..identity() },
-        SpectralSourceToken { generation: 0, ..identity() },
+        SpectralSourceToken {
+            server_scope: String::new(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            library_scope: " ".into(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            track_id: String::new(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            content_revision: String::new(),
+            ..identity()
+        },
+        SpectralSourceToken {
+            generation: 0,
+            ..identity()
+        },
     ] {
         let candidate = SpectralBoundaryJob {
             source: missing.clone(),
@@ -173,7 +201,7 @@ fn invalid_byte_buffer_window_and_untrusted_source_fail_closed() {
             analyze_verified_boundary_bytes(&wav, &job(Boundary::Intro, seconds), || {
                 Some(identity())
             })
-                .is_none(),
+            .is_none(),
         );
     }
     for corrupt in [&b"not audio"[..], &b""[..], &wav[..20]] {

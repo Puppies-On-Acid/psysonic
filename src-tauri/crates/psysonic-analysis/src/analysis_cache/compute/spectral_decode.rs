@@ -62,7 +62,7 @@ where
     let track = format.tracks().iter().find(|t| t.id == track_id)?;
     let params = track.codec_params.as_ref()?.audio()?;
     let sample_rate = params.sample_rate?;
-    let channels = params.channels?.count();
+    let channels = params.channels.as_ref()?.count();
     if !(MIN_RATE..=MAX_RATE).contains(&sample_rate) || !(1..=8).contains(&channels) {
         return None;
     }

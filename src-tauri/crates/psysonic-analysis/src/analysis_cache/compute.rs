@@ -10,10 +10,10 @@ pub use decoder::{
     decode_mono_pcm_window, PcmAnalysisWindow,
 };
 pub(crate) use planning::seed_transcoded_bytes_execute;
-pub(crate) use spectral_decode::decode_spectral_pcm_window;
 pub use planning::{
     md5_first_16kb, seed_from_bytes_execute, seed_from_bytes_into_cache, SeedFromBytesOutcome,
 };
+pub(crate) use spectral_decode::decode_spectral_pcm_window;
 pub use waveform::recommended_gain_for_target;
 
 #[cfg(test)]

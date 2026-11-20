@@ -135,7 +135,6 @@ pub fn analyze_boundary_pcm(
     })
 }
 
-
 /// Scope for one ephemeral, already-verified audio representation. The caller
 /// must bind these fields to its current trusted source; this struct does not
 /// authenticate media bytes or create a cache entry.
