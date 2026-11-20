@@ -16,9 +16,7 @@ use std::time::Instant;
 
 use tokio::task::JoinHandle;
 
-use super::executor::{
-    try_spawn_with_available_bytes, SpectralCompletedBoundary,
-};
+use super::executor::{try_spawn_with_available_bytes, SpectralCompletedBoundary};
 use super::lifecycle::SpectralAdmissionGate;
 use super::{SpectralBoundaryJob, SpectralSourceToken};
 use crate::analysis_runtime::spectral_ordinary_pipeline_idle;
@@ -141,19 +139,22 @@ mod tests {
         bytes
     }
 
+    fn try_test_request<P>(
+        gate: &Arc<SpectralAdmissionGate>,
+        probe: P,
+    ) -> Option<JoinHandle<Option<SpectralCompletedBoundary>>>
+    where
+        P: Fn() -> Option<bool> + Send + 'static,
+    {
+        try_spawn_with_idle_probe(gate, job(), wav(), deadline(), source_option, probe)
+    }
+
     #[tokio::test]
     async fn idle_probe_allows_owned_bytes_and_preserves_source_identity() {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
-        let worker = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            || Some(true),
-        )
-        .expect("verified idle source can enter");
+        let worker = try_test_request(&gate, || Some(true))
+            .expect("verified idle source can enter");
         let done = worker.await.expect("worker joined").expect("valid spectrum");
         assert_eq!(done.source, source());
         assert!(done.bands.low > 0.2);
@@ -167,33 +168,10 @@ mod tests {
     async fn unknown_or_busy_pipeline_never_consumes_the_admission_slot() {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
-        let missing = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            || None,
-        );
-        assert!(missing.is_none());
-        let busy = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            || Some(false),
-        );
-        assert!(busy.is_none());
-        let worker = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            || Some(true),
-        )
-        .expect("rejected work did not reserve the slot");
+        assert!(try_test_request(&gate, || None).is_none());
+        assert!(try_test_request(&gate, || Some(false)).is_none());
+        let worker = try_test_request(&gate, || Some(true))
+            .expect("rejected work did not reserve the slot");
         assert!(worker.await.expect("worker joined").is_some());
     }
 
@@ -203,14 +181,9 @@ mod tests {
         assert!(gate.select_source(Some(source())));
         let polls = Arc::new(AtomicUsize::new(0));
         let next = Arc::clone(&polls);
-        let rejected = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            move || Some(next.fetch_add(1, Ordering::SeqCst) == 0),
-        );
+        let rejected = try_test_request(&gate, move || {
+            Some(next.fetch_add(1, Ordering::SeqCst) == 0)
+        });
         // The first idle check passed. Executor admission then rechecked and
         // observed ordinary analysis activity before reserving a worker slot.
         assert!(rejected.is_none());
@@ -226,14 +199,9 @@ mod tests {
         assert!(gate.select_source(Some(source())));
         let polls = Arc::new(AtomicUsize::new(0));
         let next = Arc::clone(&polls);
-        let worker = try_spawn_with_idle_probe(
-            &gate,
-            job(),
-            wav(),
-            deadline(),
-            source_option,
-            move || Some(next.fetch_add(1, Ordering::SeqCst) < 6),
-        )
+        let worker = try_test_request(&gate, move || {
+            Some(next.fetch_add(1, Ordering::SeqCst) < 6)
+        })
         .expect("initially idle");
         assert!(worker.await.expect("worker joined").is_none());
         assert!(polls.load(Ordering::SeqCst) > 6);
