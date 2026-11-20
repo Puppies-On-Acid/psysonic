@@ -154,39 +154,34 @@ pub fn offer_verified_original(
         generation: trusted.generation,
     };
     let store = Arc::clone(shared_store());
-    // Cheap early rejection before making a second full encoded-byte copy.
-    {
-        let Ok(state) = store.try_lock() else {
-            return false;
-        };
-        if state.has(&source) || state.pending.len() >= MAX_PENDING {
-            return false;
-        }
-    }
     if !crate::raw_probe::bytes_match_trusted(bytes, &trusted.md5_16kb) {
         return false;
     }
-    let Some(original) = SpectralOwnedOriginal::try_from_completed_original(
-        source.clone(),
-        &source,
-        server,
-        bytes.len(),
-        trusted,
-        bytes.to_vec(),
-    ) else {
-        return false;
-    };
-    let (_, owned) = original.into_parts();
-
-    {
+    // Serialize the bounded original-byte copy with admission. The two pending
+    // slots cap simultaneous source ownership, including racing HTTP/preload
+    // offers that otherwise might clone 64 MiB each before being rejected.
+    // This is an off-realtime analysis capture path; the audio callback never
+    // takes this lock or copies these bytes.
+    let owned = {
         let Ok(mut state) = store.try_lock() else {
             return false;
         };
         if state.has(&source) || state.pending.len() >= MAX_PENDING {
             return false;
         }
+        let Some(original) = SpectralOwnedOriginal::try_from_completed_original(
+            source.clone(),
+            &source,
+            server,
+            bytes.len(),
+            trusted,
+            bytes.to_vec(),
+        ) else {
+            return false;
+        };
         state.pending.push(source.clone());
-    }
+        original.into_parts().1
+    };
 
     tokio::spawn(async move {
         let expires = Instant::now() + MAX_WAIT;
