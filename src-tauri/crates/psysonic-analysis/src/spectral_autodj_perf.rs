@@ -68,3 +68,139 @@ fn spectral_autodj_offline_cpu_probe() {
     measure_case("typical_stereo", 48_000, 2);
     measure_case("high_rate_eight_channel", 192_000, 8);
 }
+
+/// Current process high-water working-set sample (NOT a per-decoder allocator
+/// measurement). Windows uses the built-in Get-Process command; Linux uses
+/// procfs. Missing platform tools produce an explicit unavailable reading.
+fn process_peak_working_set_bytes() -> Option<u64> {
+    if cfg!(target_os = "windows") {
+        let query = format!(
+            "(Get-Process -Id {}).PeakWorkingSet64",
+            std::process::id()
+        );
+        let output = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &query])
+            .output()
+            .ok()?;
+        return String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok();
+    }
+    if cfg!(target_os = "linux") {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let kb = status
+            .lines()
+            .find(|line| line.starts_with("VmHWM:"))?
+            .split_whitespace()
+            .nth(1)?
+            .parse::<u64>()
+            .ok()?;
+        return kb.checked_mul(1024);
+    }
+    None
+}
+
+fn synthetic_stereo_wav_seconds(seconds: u32) -> Vec<u8> {
+    let rate = 48_000_u32;
+    let frames = rate * seconds;
+    let data_bytes = frames * 4;
+    let mut wav = Vec::with_capacity(44 + data_bytes as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_bytes).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&2_u16.to_le_bytes());
+    wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * 4).to_le_bytes());
+    wav.extend_from_slice(&4_u16.to_le_bytes());
+    wav.extend_from_slice(&16_u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_bytes.to_le_bytes());
+    for index in 0..frames {
+        let t = index as f64 / f64::from(rate);
+        let low = (std::f64::consts::TAU * 73.0 * t).sin() * 9_000.0;
+        let high = (std::f64::consts::TAU * 4_500.0 * t).sin() * 1_500.0;
+        let sample = (low + high) as i16;
+        wav.extend_from_slice(&sample.to_le_bytes());
+        wav.extend_from_slice(&(-sample).to_le_bytes());
+    }
+    wav
+}
+
+fn measure_decode_plus_fft(label: &str, bytes: &[u8], boundary: Boundary) {
+    use crate::spectral_autodj::{
+        analyze_verified_boundary_bytes, SpectralBoundaryJob, SpectralSourceToken,
+    };
+
+    let source = SpectralSourceToken {
+        server_scope: "perf-server".into(),
+        library_scope: "perf-server".into(),
+        track_id: label.into(),
+        content_revision: crate::analysis_cache::md5_first_16kb(bytes),
+        generation: 1,
+    };
+    let job = SpectralBoundaryJob {
+        source: source.clone(),
+        boundary,
+        window_seconds: 0.25,
+    };
+    for _ in 0..3 {
+        let _ = black_box(analyze_verified_boundary_bytes(bytes, &job, || Some(source.clone())));
+    }
+
+    let peak_before = process_peak_working_set_bytes();
+    let mut durations = Vec::with_capacity(25);
+    let mut measured = 0usize;
+    for _ in 0..25 {
+        let begin = Instant::now();
+        let result = analyze_verified_boundary_bytes(
+            black_box(bytes),
+            &job,
+            || Some(source.clone()),
+        );
+        durations.push(begin.elapsed());
+        measured += usize::from(result.is_some());
+        let _ = black_box(result);
+    }
+    durations.sort_unstable();
+    let millis = |index: usize| durations[index].as_secs_f64() * 1_000.0;
+    let peak_after = process_peak_working_set_bytes();
+    println!(
+        "spectral-e2e scenario={label} boundary={boundary:?} encoded_bytes={} \
+         decode_fft_valid_runs={measured}/25 warmups=3 runs=25 \
+         p50_ms={:.3} p95_ms={:.3} max_ms={:.3} \
+         process_peak_ws_before_bytes={peak_before:?} process_peak_ws_after_bytes={peak_after:?}",
+        bytes.len(),
+        millis(12),
+        millis(23),
+        millis(24)
+    );
+}
+
+/// Manual, read-only full decode + spectral FFT characterization. Checked-in
+/// codec fixtures may deliberately return neutral (missing duration/gapless
+/// metadata); report rather than relaxing the strict codec acceptance rule.
+/// No server, private library, network or stored audio is accessed.
+#[test]
+#[ignore = "manual full decode+FFT and process high-water memory characterization"]
+fn spectral_autodj_existing_codec_end_to_end_probe() {
+    let wav = synthetic_stereo_wav_seconds(12);
+    measure_decode_plus_fft("synthetic_wav", &wav, Boundary::Intro);
+    measure_decode_plus_fft("synthetic_wav", &wav, Boundary::Outro);
+
+    let m4a = include_bytes!("../../psysonic-audio/fixtures/isomp4_seek_normal.m4a");
+    let mp3 = include_bytes!("../../psysonic-audio/fixtures/lame_sine_22050.mp3");
+    let no_xing = include_bytes!("../../psysonic-audio/fixtures/no_xing_sine.mp3");
+    let surround = include_bytes!("../../psysonic-audio/fixtures/five_one_sine.flac");
+    for (label, data) in [
+        ("aac_m4a", m4a.as_slice()),
+        ("lame_mp3", mp3.as_slice()),
+        ("no_xing_mp3", no_xing.as_slice()),
+        ("surround_flac", surround.as_slice()),
+    ] {
+        measure_decode_plus_fft(label, data, Boundary::Intro);
+        measure_decode_plus_fft(label, data, Boundary::Outro);
+    }
+}
