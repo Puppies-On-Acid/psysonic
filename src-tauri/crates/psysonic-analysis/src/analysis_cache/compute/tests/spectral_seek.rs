@@ -68,13 +68,21 @@ fn synthetic_stereo_wav() -> Vec<u8> {
     wav
 }
 
-fn encode_m4a_with_ffmpeg(wav: &Path, output: &Path) {
+fn encode_m4a_with_ffmpeg(wav: &Path, output: &Path, pns_enabled: bool) {
     let binary = std::env::var_os("PSYSONIC_TEST_FFMPEG")
         .unwrap_or_else(|| std::ffi::OsString::from("ffmpeg"));
-    let result = Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(wav)
-        .args(["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"])
+        .args(["-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"]);
+    if !pns_enabled {
+        // FFmpeg's native AAC encoder supports disabling Perceptual Noise
+        // Substitution. This isolates seek precision from the decoder's
+        // stateful PNS random-number history without changing any user audio.
+        command.args(["-aac_pns", "disable"]);
+    }
+    let result = command
         .arg(output)
         .output()
         .unwrap_or_else(|error| {
@@ -130,14 +138,14 @@ fn full_decode_reference(bytes: &[u8]) -> Vec<f32> {
     pcm
 }
 
-#[test]
-#[ignore = "manual: requires ffmpeg to encode 12s synthetic AAC/M4A"]
-fn spectral_seek_long_m4a_matches_full_decode_reference() {
+/// Shared full-decode reference comparison for codecs with and without PNS.
+/// The strict sample-level assertion is deliberately unchanged for both.
+fn calibrate_long_m4a_seek(pns_enabled: bool) {
     let scratch = ScratchAudioDir::create();
     let wav_path = scratch.join("synthetic.wav");
     let m4a_path = scratch.join("synthetic.m4a");
     std::fs::write(&wav_path, synthetic_stereo_wav()).expect("write synthetic WAV");
-    encode_m4a_with_ffmpeg(&wav_path, &m4a_path);
+    encode_m4a_with_ffmpeg(&wav_path, &m4a_path, pns_enabled);
     let m4a = std::fs::read(&m4a_path).expect("read synthetic compressed fixture");
 
     let full_pcm = full_decode_reference(&m4a);
@@ -160,7 +168,7 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
         .find(|track| track.id == session.track_id)
         .expect("selected audio track");
     println!(
-        "spectral-seek fixture source_frames={} decoded_frames={full_frames} \
+        "spectral-seek fixture pns_enabled={pns_enabled} source_frames={} decoded_frames={full_frames} \
          container_frames={reported_frames} delay={:?} padding={:?} \
          decoded_minus_source={} decoded_minus_container={}",
         DURATION_SECONDS * SAMPLE_RATE as usize,
@@ -314,4 +322,16 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
         "long AAC/M4A PCM mismatch on {failing_windows} of three windows; \
          strict max_error <= 1.0e-5 required for each"
     );
+}
+
+#[test]
+#[ignore = "manual: ffmpeg AAC with PNS enabled, verify raw PCM seek invariance"]
+fn spectral_seek_long_m4a_matches_full_decode_reference() {
+    calibrate_long_m4a_seek(true);
+}
+
+#[test]
+#[ignore = "manual: ffmpeg AAC with PNS disabled, verify raw PCM seek invariance"]
+fn spectral_seek_long_m4a_without_pns_matches_full_decode_reference() {
+    calibrate_long_m4a_seek(false);
 }
