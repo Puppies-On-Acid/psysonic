@@ -26,7 +26,9 @@ impl ActivityEpoch {
     fn record(&self) {
         // Saturate permanently rather than wrap to a previously accepted
         // generation; exhaustion must fail closed for future spectral work.
-        let _ = self.value.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_add(1));
+        let _ = self
+            .value
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_add(1));
     }
 }
 
@@ -70,10 +72,17 @@ mod tests {
         let mut http = AnalysisBackfillQueueState::default();
         http.push_new(
             AnalysisBackfillPriority::High,
-            ("synthetic-track".into(), "synthetic-url".into(), "server".into()),
+            (
+                "synthetic-track".into(),
+                "synthetic-url".into(),
+                "server".into(),
+            ),
         );
         let after_http = ordinary_activity_epoch().expect("not exhausted");
-        assert!(after_http > before, "HTTP queue must revoke spectral ticket");
+        assert!(
+            after_http > before,
+            "HTTP queue must revoke spectral ticket"
+        );
 
         let mut cpu = AnalysisCpuSeedQueueState::default();
         let (_kind, _rx) = cpu.enqueue(
@@ -86,6 +95,9 @@ mod tests {
             0,
         );
         let after_cpu = ordinary_activity_epoch().expect("not exhausted");
-        assert!(after_cpu > after_http, "CPU queue must revoke spectral ticket");
+        assert!(
+            after_cpu > after_http,
+            "CPU queue must revoke spectral ticket"
+        );
     }
 }

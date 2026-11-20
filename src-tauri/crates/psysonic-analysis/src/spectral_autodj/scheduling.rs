@@ -151,8 +151,7 @@ mod tests {
     async fn idle_probe_allows_owned_bytes_and_preserves_source_identity() {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
-        let worker =
-            try_test_request(&gate, || Some(5)).expect("verified idle source can enter");
+        let worker = try_test_request(&gate, || Some(5)).expect("verified idle source can enter");
         let done = worker
             .await
             .expect("worker joined")

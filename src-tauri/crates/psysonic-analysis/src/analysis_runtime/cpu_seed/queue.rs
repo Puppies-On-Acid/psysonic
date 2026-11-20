@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::analysis_cache;
 use crate::analysis_perf::AnalysisSeedTimings;
 
+use super::super::spectral_priority::record_ordinary_queue_submission;
 use super::super::types::{
     clamp_pipeline_parallelism, AnalysisBackfillPriority, AnalysisCpuSeedEnqueueKind,
     AnalysisTierCounts, TrustedAnalysisRevision,
 };
-use super::super::spectral_priority::record_ordinary_queue_submission;
 use super::{analysis_cpu_seed_worker_loop, requested_pipeline_parallelism};
 
 pub(in crate::analysis_runtime) type SeedDoneSender = tokio::sync::oneshot::Sender<
