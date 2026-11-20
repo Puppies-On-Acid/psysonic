@@ -399,6 +399,12 @@ mod tests {
     use super::*;
     use crate::spectral_autodj::SpectralBandRms;
 
+    // Fixtures share a process-global trusted revision key. Concurrent test
+    // registration can make the speculative try_lock check fail closed while
+    // an otherwise valid fake worker publishes its result. Keep these fixture
+    // tests independent without changing production nonblocking behavior.
+    static SHARED_REVISION_TEST: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn fixture() -> (Vec<u8>, TrustedAnalysisRevision, SpectralCaptureRequest) {
         let mut wav = Vec::new();
         let rate = 48_000_u32;
@@ -495,6 +501,7 @@ mod tests {
 
     #[tokio::test]
     async fn complete_original_capture_yields_a_single_source_bound_result() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let queue = Arc::new(AtomicU64::new(5));
         let q = Arc::clone(&queue);
@@ -525,6 +532,7 @@ mod tests {
 
     #[tokio::test]
     async fn unarmed_stale_transcoded_and_wrong_scope_do_no_work() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
         assert!(!coordinator.offer_with(
@@ -567,6 +575,7 @@ mod tests {
 
     #[tokio::test]
     async fn activity_and_playback_churn_discard_a_ready_result() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let counter = Arc::new(AtomicU64::new(5));
         let read = Arc::clone(&counter);
@@ -598,6 +607,7 @@ mod tests {
 
     #[tokio::test]
     async fn actual_spectral_decoder_runs_only_from_a_verified_capture() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         use crate::analysis_runtime::ActivityEpoch;
 
         let (wav, trusted, request) = fixture();
@@ -640,6 +650,7 @@ mod tests {
 
     #[tokio::test]
     async fn offline_dual_address_uses_explicit_library_identity() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, mut trusted, mut request) = fixture();
         request.library_scope = "offline-library-b".into();
         trusted.content_hash_server_id = Some("offline-library-b".into());
@@ -665,6 +676,7 @@ mod tests {
 
     #[tokio::test]
     async fn superseded_trusted_revision_invalidates_a_completed_result() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, mut trusted, mut request) = fixture();
         request.track_id = "isolated-stale-revision-test".into();
         trusted.generation = crate::analysis_runtime::begin_trusted_revision(
@@ -701,6 +713,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_capacity_and_cancellation_fail_neutrally() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| None);
         assert!(coordinator.arm(request.clone()));
@@ -729,6 +742,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_and_incomplete_originals_never_spawn_extra_workers() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
         assert!(coordinator.arm(request));
@@ -760,6 +774,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_after_completion_erases_ready_result() {
+        let _shared_revision_guard = SHARED_REVISION_TEST.lock().await;
         let (wav, trusted, request) = fixture();
         let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
         assert!(coordinator.arm(request));
