@@ -301,4 +301,26 @@ mod tests {
         }
         assert!(ThreeBandEnvelope::new([-4.0, 0.0, 0.0], Duration::ZERO).is_none());
     }
+
+    #[test]
+    fn live_rodio_adapter_is_independent_and_neutral_until_armed() {
+        let rate = std::num::NonZeroU32::new(48_000).unwrap();
+        let channels = std::num::NonZeroU16::new(2).unwrap();
+        let data = (0..96_000)
+            .map(|i| (std::f32::consts::TAU * 55.0 * i as f32 / 96_000.0).sin() * 0.4)
+            .collect::<Vec<_>>();
+        let neutral = rodio::buffer::SamplesBuffer::new(channels, rate, data.clone());
+        let (source, neutral_handle) = SpectralEqSource::new(neutral, Duration::from_secs(3));
+        assert!(!neutral_handle.armed.load(Ordering::Relaxed));
+        assert_eq!(source.collect::<Vec<_>>(), data);
+
+        let filtered = rodio::buffer::SamplesBuffer::new(channels, rate, data.clone());
+        let (source, filtered_handle) = SpectralEqSource::new(filtered, Duration::from_secs(3));
+        assert!(filtered_handle.arm([-4.0, 0.0, 0.0]));
+        assert!(!filtered_handle.arm([-4.0, 0.0, 0.0]));
+        let output = source.collect::<Vec<_>>();
+        assert_eq!(output.len(), data.len());
+        assert!(output.iter().zip(data.iter()).any(|(a, b)| (a - b).abs() > 0.01));
+        assert!(output.iter().all(|v| v.is_finite()));
+    }
 }
