@@ -60,6 +60,9 @@ try {
         Run-Check "Release decode + spectral FFT and working-set probe" {
             cargo test -p psysonic-analysis --release --lib spectral_autodj_existing_codec_end_to_end_probe -- --ignored --nocapture --test-threads=1
         }
+        Run-Check "Release source-to-worker capture and decode latency" {
+            cargo test -p psysonic-analysis --release --lib spectral_autodj_worker_capture_latency_probe -- --ignored --nocapture --test-threads=1
+        }
         Run-Check "Release PCM-only FFT baseline characterization" {
             cargo test -p psysonic-analysis --release --lib spectral_autodj_offline_cpu_probe -- --ignored --nocapture --test-threads=1
         }
