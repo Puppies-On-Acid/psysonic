@@ -250,7 +250,6 @@ fn outro_pcm_window_starts_at_exact_sample_after_packet_aligned_seek() {
     }
 }
 
-
 /// Calibration of the compressed seek boundary against a reference decode of
 /// the same bytes. This cannot prove accuracy across codecs or VBR layouts.
 #[test]
