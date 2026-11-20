@@ -13,6 +13,9 @@ use crate::spectral_autodj::Boundary;
 const MAX_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_WINDOW_SECONDS: f64 = 6.0;
 const MAX_PACKETS: usize = 4_096;
+// Prime stateful decoders before collecting the desired outro window.
+// This is a preliminary bounded warm-up, not proven for all codecs.
+const SEEK_WARMUP_SECONDS: usize = 1;
 const MIN_RATE: u32 = 8_000;
 const MAX_RATE: u32 = 192_000;
 
@@ -25,7 +28,8 @@ pub(crate) struct SpectralPcmWindow {
 /// Extract a bounded, interleaved window while preserving every channel.
 ///
 /// The supplied bytes must already be available and associated by the caller
-/// with a trusted content revision. We do not fall back to a full-track decode
+/// with a trusted content revision. Short tracks may decode from the start
+/// to warm up stateful codecs, but long tracks never fall back to full decode
 /// when an outro seek or timeline lookup is unavailable. The cancellation
 /// guard is checked before setup, once per packet, and before returning.
 ///
@@ -77,34 +81,47 @@ where
         return None;
     }
 
-    let mut required_seek_ts = None;
+    let mut prefix_frames_to_discard = 0usize;
+    let mut target_time_after_seek = None;
     if boundary == Boundary::Outro {
-        // A reliable seek coordinate is mandatory. Never replay a long track
-        // from byte zero just to locate a late transition window.
+        // Require a container timeline; never decode an unknown-duration
+        // long file from its beginning to hunt for the outro.
         let total = total_frames?;
-        if total == 0 {
-            return None;
-        }
         let start = total.saturating_sub(target_frames);
         if start > 0 {
-            // Symphonia seeks to a packet *at or before* the requested instant.
-            // Retain its exact requested timestamp to discard pre-roll PCM.
-            time_base?;
-            let time = Time::try_from_secs_f64(start as f64 / sample_rate as f64)?;
-            let seeked_to = format
-                .seek(
-                    SeekMode::Accurate,
-                    SeekTo::Time {
-                        time,
-                        track_id: Some(track_id),
-                    },
-                )
-                .ok()?;
-            if seeked_to.track_id != track_id || seeked_to.actual_ts > seeked_to.required_ts {
-                return None;
+            let warmup_frames = (sample_rate as usize).saturating_mul(SEEK_WARMUP_SECONDS);
+            if start <= warmup_frames {
+                // An intro-to-outro decode is bounded by one second of
+                // decoder warm-up plus the requested six-second maximum.
+                // For short AAC clips this preserves the MDCT overlap state.
+                prefix_frames_to_discard = start;
+            } else {
+                // Seek one second BEFORE the desired window, then decode
+                // and discard that warm-up. Accurate seeks are packet-aligned.
+                let preroll_start = start - warmup_frames;
+                let time = Time::try_from_secs_f64(preroll_start as f64 / sample_rate as f64)?;
+                let seeked_to = format
+                    .seek(
+                        SeekMode::Accurate,
+                        SeekTo::Time {
+                            time,
+                            track_id: Some(track_id),
+                        },
+                    )
+                    .ok()?;
+                if seeked_to.track_id != track_id || seeked_to.actual_ts > seeked_to.required_ts {
+                    return None;
+                }
+                let time_base = time_base?;
+                let preroll_time = time_base.calc_time(seeked_to.required_ts)?.as_secs_f64();
+                let target_time =
+                    preroll_time + (start - preroll_start) as f64 / f64::from(sample_rate);
+                if !target_time.is_finite() {
+                    return None;
+                }
+                decoder.reset();
+                target_time_after_seek = Some(target_time);
             }
-            decoder.reset();
-            required_seek_ts = Some(seeked_to.required_ts);
         }
     }
 
@@ -136,13 +153,18 @@ where
             return None;
         }
         let available_frames = packet_pcm.len() / channels;
-        let skip_frames = if let Some(required_ts) = required_seek_ts {
+        let skip_frames = if prefix_frames_to_discard > 0 {
+            // From-the-beginning decode keeps codec state intact. Count
+            // actual decoded frames, not presentation timestamps, so an
+            // unaligned short outro matches the full-decode reference.
+            let skip = available_frames.min(prefix_frames_to_discard);
+            prefix_frames_to_discard -= skip;
+            skip
+        } else if let Some(target_time) = target_time_after_seek {
             let time_base = time_base?;
-            let target_time = time_base.calc_time(required_ts)?.as_secs_f64();
             let packet_time = time_base.calc_time(packet.pts)?.as_secs_f64();
             let fractional_skip = (target_time - packet_time) * f64::from(sample_rate);
-            // Never shift a compressed window later because a seek overshot,
-            // a timestamp was missing, or the timestamp base is inconsistent.
+            // Reject a seek that overshot the required audio frame.
             if !fractional_skip.is_finite() || fractional_skip < -0.5 {
                 return None;
             }
@@ -150,11 +172,14 @@ where
             if skip >= available_frames {
                 continue;
             }
-            required_seek_ts = None;
+            target_time_after_seek = None;
             skip
         } else {
             0
         };
+        if skip_frames == available_frames {
+            continue;
+        }
         let take_frames = (available_frames - skip_frames).min(target_frames - decoded_frames);
         let take_start = skip_frames * channels;
         let take_end = (skip_frames + take_frames) * channels;
