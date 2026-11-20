@@ -74,10 +74,7 @@ fn spectral_autodj_offline_cpu_probe() {
 /// procfs. Missing platform tools produce an explicit unavailable reading.
 fn process_peak_working_set_bytes() -> Option<u64> {
     if cfg!(target_os = "windows") {
-        let query = format!(
-            "(Get-Process -Id {}).PeakWorkingSet64",
-            std::process::id()
-        );
+        let query = format!("(Get-Process -Id {}).PeakWorkingSet64", std::process::id());
         let output = std::process::Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", &query])
             .output()

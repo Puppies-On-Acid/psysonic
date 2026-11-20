@@ -484,7 +484,6 @@ mod tests {
         None
     }
 
-
     async fn wait_until_ready(coordinator: &Arc<SpectralCaptureCoordinator>) {
         for _ in 0..100 {
             if coordinator

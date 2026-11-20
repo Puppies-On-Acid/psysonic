@@ -380,8 +380,9 @@ pub(crate) async fn dispatch_track_analysis_bytes(
                             analysis_bytes_transcoded: false,
                             content_hash_server_id: None,
                         };
-                    let _ = psysonic_analysis::spectral_autodj::integration::offer_existing_original_if_armed(
-                        server_id,
+                    let _ =
+                        psysonic_analysis::spectral_autodj::integration::offer_existing_original_if_armed(
+                            server_id,
                         track_id,
                         &analysis_bytes,
                         analysis_bytes.len(),
