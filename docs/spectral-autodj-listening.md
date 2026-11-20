@@ -94,7 +94,9 @@ $sha = (git rev-parse HEAD).Trim()
 ~~~
 
 Each private Pair_001, Pair_002, etc directory receives two level-matched
-WAVs and a private answer key. The root BLIND_RATINGS.csv contains empty
+WAVs and a private answer key. The renderer refuses to replace existing
+Sample_1.wav, Sample_2.wav or ANSWER_KEY.txt files; choose a new output folder
+for another rendering rather than overwriting a prior listening study. The root BLIND_RATINGS.csv contains empty
 rating columns. Fill it out **before** looking at any answer key.
 
 Recommended scoring: 1–5 for tonal/musical quality per anonymous sample;

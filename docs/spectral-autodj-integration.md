@@ -37,6 +37,8 @@ One consolidated Windows checker: `scripts/verify-spectral-autodj.ps1 -ExpectedH
 
 **Independent review handoff:** [Spectral AutoDJ read-only reviewer checklist](spectral-autodj-review.md) captures the base SHA, exact-HEAD requirement, requested severity/line-level findings, source and concurrency risks, no-write instructions, and the owner Windows command. It is prepared only; no Claude review has been performed or waived.
 
+**Real-music listening milestone (new code, unverified):** The isolated ThreeBandEq and SpectralEqSource now provide the conservative -4..0 dB per-source EQ core, with neutral bitwise pass-through. A local binary and PowerShell batch harness can render 48kHz stereo, RMS-matched blind A/B comparisons from verified, already owned mono/stereo original files, without touching the running playback engine. Full workflow and limitations are documented in [docs/spectral-autodj-listening.md](spectral-autodj-listening.md). This advances real **offline** audition readiness, not the missing in-app paired-deck spectral handoff or live UX.
+
 **Outstanding exit gates:** Windows run on the new SHA; compare CPU/enqueue/peak memory against a correctly configured baseline on the same machine and workload; review real complete audio variants and fallback under contention; independent read-only Claude Code review on the eventual SHA (deferred by owner quota, not waived); full upstream quality gates/CI; and owner-controlled manual playback listening after activation. AAC PNS-on strict PCM mismatch and MP3 lacking trustworthy Xing/LAME gapless metadata remain unresolved **without relaxed tolerances or changed codec policy**.
 
 ## Owner approvals still required

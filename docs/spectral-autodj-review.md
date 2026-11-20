@@ -19,7 +19,7 @@ Independent reviewer: name the **exact HEAD SHA** in every finding and use the a
 
 ## Request for Claude Code (READ-ONLY)
 
-Review the complete experimental Spectral AutoDJ source-to-worker-to-result package against the base, upstream engineering rules and project requirements. **Do not edit or format files in write mode**, create commits/branches, open PRs, merge, deploy, access real music libraries, live databases or credentials, or make network requests. Report every finding with severity (Critical/High/Medium/Low), exact file/line, scenario, impact, fix and targeted regression. Distinguish actually run checks from inferred correctness. If no findings, summarize residual risks and unrun gates.
+Review the complete experimental Spectral AutoDJ source-to-worker-to-result package AND the added per-source three-band DSP and local real-music blind A/B audition renderer against the base, upstream engineering rules and project requirements. **Do not edit or format files in write mode**, create commits/branches, open PRs, merge, deploy, access real music libraries, live databases or credentials, or make network requests. Report every finding with severity (Critical/High/Medium/Low), exact file/line, scenario, impact, fix and targeted regression. Distinguish actually run checks from inferred correctness. If no findings, summarize residual risks and unrun gates.
 
 Investigate these risks in particular:
 
@@ -28,9 +28,12 @@ Investigate these risks in particular:
 - Race/cancellation: ordinary CPU and HTTP activity epoch, idle probing, speculative RAII slot, panics and detached JoinHandles, deadlines, A->B->A, server collisions, trusted generation replacement and one-time result use.
 - Codec behavior: intro/outro seek, stereo anti-phase, 5.1/8-channel, Hi-Res, corrupt/silent audio, AAC PNS-on/off, VBR MP3 and missing Xing/LAME gapless metadata. Do not relax strict PCM policy.
 - Rust audio-to-analysis crate public API, Tauri architecture, no realtime-thread blocking and protected playback-clock/normalization/crossfade behavior.
+- Per-deck DSP correctness: complementary 180 Hz/3 kHz bands, 0 dB identity (bit-exact), smooth -4 to 0 dB bass restoration, filter-channel independence, no allocations/locks per sample, stream seek state, format/rate/channel stability, clips/denormals/NaNs and headroom. No existing user 10-band EQ or equal-power faders may be replaced.
+- Local blind renderer: stereo/mono handling, simple resampling versus production SRC, original intro/outro accuracy, matching RMS loudness (not true LUFS), sampling/quantization, peak safety, silent/invalid inputs, randomized label/answer key, no overwrites or private paths, output directory separation and test-pair privacy.
+- Scope honesty: the offline A/B renderer is intended for meaningful first listening trials on real local songs; live AutoDJ source hooks, a two-deck plan and per-transition player activation remain NOT implemented. Do not report production live audible activation as complete.
 - Timings, queue contention and memory: raw process high-water working set is not isolated decoder allocation; require owner-hardware same-profile baseline comparisons.
 
-Main paths: analysis crate spectral_autodj/{integration,owned_source,scheduling,executor,lifecycle}.rs, analysis_runtime/{spectral_priority,trusted_revision,enqueue/offline}.rs, audio crate analysis_dispatch{,/file_dispatch}.rs, spectral_autodj_perf.rs and scripts/verify-spectral-autodj.ps1.
+Main paths: analysis crate spectral_autodj.rs and spectral_autodj/{integration,owned_source,scheduling,executor,lifecycle}.rs, analysis_runtime/{spectral_priority,trusted_revision,enqueue/offline}.rs; audio crate sources/spectral_eq.rs, spectral_audition.rs, bin/spectral_audition.rs, analysis_dispatch{,/file_dispatch}.rs, spectral_autodj_perf.rs; scripts/spectral-autodj-audition.ps1 and scripts/verify-spectral-autodj.ps1. Refer also to docs/spectral-autodj-listening.md.
 
 ## Consolidated owner QA (pending)
 
