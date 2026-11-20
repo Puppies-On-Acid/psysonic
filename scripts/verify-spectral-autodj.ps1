@@ -54,8 +54,11 @@ try {
     Run-Check "Rust analysis library" {
         cargo test -p psysonic-analysis --lib --quiet
     }
-    Run-Check "Rust audio library" {
+    Run-Check "Rust audio library including synthetic blind A/B audio" {
         cargo test -p psysonic-audio --lib --quiet
+    }
+    Run-Check "Release real-music audition CLI build" {
+        cargo build --release -p psysonic-audio --bin spectral_audition
     }
     Run-Check "Strict analysis and audio Clippy" {
         cargo clippy -p psysonic-analysis -p psysonic-audio --all-targets -- -D warnings
