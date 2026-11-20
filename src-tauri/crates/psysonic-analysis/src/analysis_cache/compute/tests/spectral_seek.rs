@@ -249,8 +249,10 @@ fn calibrate_long_m4a_seek(pns_enabled: bool) {
         let mut bad_frame_count = 0usize;
         for (frame, (actual, expected)) in tail
             .pcm
-            .chunks_exact(CHANNELS)
-            .zip(reference.chunks_exact(CHANNELS))
+            .as_chunks::<CHANNELS>()
+            .0
+            .iter()
+            .zip(reference.as_chunks::<CHANNELS>().0.iter())
             .enumerate()
         {
             let bad = actual
@@ -355,7 +357,9 @@ fn encode_vbr_mp3_with_ffmpeg(wav: &Path, output: &Path) {
 /// production window extractor. The generated source is exactly 12 seconds.
 fn synthetic_reference_end(bytes: &[u8], decoded_frames: usize) -> usize {
     let session = open_decode_session(bytes, None).expect("probe synthetic codec timeline");
-    let reported_frames = session.timeline_hint.expect("codec must report total frames");
+    let reported_frames = session
+        .timeline_hint
+        .expect("codec must report total frames");
     let endpoint = usize::try_from(reported_frames).expect("bounded generated fixture");
     assert!(
         (SAMPLE_RATE as usize * 11..=decoded_frames).contains(&endpoint),
@@ -364,11 +368,11 @@ fn synthetic_reference_end(bytes: &[u8], decoded_frames: usize) -> usize {
     endpoint
 }
 
-fn strict_reference_slice<'a>(
-    full_pcm: &'a [f32],
+fn strict_reference_slice(
+    full_pcm: &[f32],
     endpoint_frames: usize,
     wanted_frames: usize,
-) -> &'a [f32] {
+) -> &[f32] {
     let start = endpoint_frames
         .checked_sub(wanted_frames)
         .expect("requested window cannot exceed the synthetic fixture");
@@ -436,7 +440,11 @@ fn spectral_codec_pns_rms_characterization() {
                 current_bands = Some(bands);
             }
             let bands = current_bands.expect("measured five FFT runs");
-            let reference_rms = [reference_bands.low, reference_bands.mid, reference_bands.high];
+            let reference_rms = [
+                reference_bands.low,
+                reference_bands.mid,
+                reference_bands.high,
+            ];
             let seek_rms = [bands.low, bands.mid, bands.high];
             let rel_pct = std::array::from_fn::<f64, 3, _>(|index| {
                 let reference = f64::from(reference_rms[index]);
@@ -512,8 +520,10 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
         let mut worst_error = 0.0f32;
         for (frame, (a, b)) in result
             .pcm
-            .chunks_exact(CHANNELS)
-            .zip(reference.chunks_exact(CHANNELS))
+            .as_chunks::<CHANNELS>()
+            .0
+            .iter()
+            .zip(reference.as_chunks::<CHANNELS>().0.iter())
             .enumerate()
         {
             let error = a
