@@ -366,11 +366,7 @@ fn synthetic_reference_end(bytes: &[u8], decoded_frames: usize) -> usize {
     synthetic_reference_end_at_rate(bytes, decoded_frames, SAMPLE_RATE)
 }
 
-fn synthetic_reference_end_at_rate(
-    bytes: &[u8],
-    decoded_frames: usize,
-    sample_rate: u32,
-) -> usize {
+fn synthetic_reference_end_at_rate(bytes: &[u8], decoded_frames: usize, sample_rate: u32) -> usize {
     let session = open_decode_session(bytes, None).expect("probe synthetic codec timeline");
     let reported_frames = session
         .timeline_hint
@@ -674,7 +670,6 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
     );
 }
 
-
 /// Alternate common rate: a 44.1 kHz LAME-tagged VBR MP3 must honor its
 /// *own* encoder delay and padding, not a 48 kHz fixture-specific offset.
 /// FFmpeg resamples the existing deterministic 48 kHz WAV; no user audio.
@@ -687,11 +682,7 @@ fn spectral_codec_vbr_mp3_44100_gapless_calibration() {
     let wav = scratch.join("synthetic.wav");
     let mp3 = scratch.join("synthetic-44100-vbr.mp3");
     std::fs::write(&wav, synthetic_stereo_wav()).expect("write synthetic WAV");
-    encode_mp3_with_ffmpeg(
-        &wav,
-        &mp3,
-        &["-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2"],
-    );
+    encode_mp3_with_ffmpeg(&wav, &mp3, &["-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2"]);
     let bytes = std::fs::read(mp3).expect("read locally encoded 44.1kHz MP3");
     let full_pcm = full_decode_reference_at_rate(&bytes, RATE);
     let decoded_frames = full_pcm.len() / CHANNELS;
@@ -795,9 +786,7 @@ fn spectral_codec_mp3_without_xing_metadata_diagnostic() {
 
     // Source tokens can cancel without any decoder output regardless of the
     // presence or absence of gapless metadata.
-    assert!(
-        decode_spectral_pcm_window(&bytes, Boundary::Outro, 0.213, || false).is_none()
-    );
+    assert!(decode_spectral_pcm_window(&bytes, Boundary::Outro, 0.213, || false).is_none());
     for seconds in [0.213_f64, 1.137, 3.817] {
         let wanted_frames = (seconds * f64::from(SAMPLE_RATE)).ceil() as usize;
         match decode_spectral_pcm_window(&bytes, Boundary::Outro, seconds, || true) {
