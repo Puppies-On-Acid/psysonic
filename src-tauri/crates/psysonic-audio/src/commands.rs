@@ -175,6 +175,43 @@ pub async fn audio_play(
     // Ranged/legacy HTTP paths reset this to false in `select_play_input`.
     state.stream_playback_armed.store(true, Ordering::SeqCst);
 
+    // Session-only, opt-in Spectral AutoDJ listening trial. Snapshot A's
+    // identity BEFORE replacing the engine's current track/server pointers
+    // with B's values. Both boundary analyses must have been completed from
+    // trustworthy original bytes and still match their active revisions.
+    // No audio is changed unless the JS content-driven AutoDJ handoff already
+    // supplied explicit fade overrides. Manual skip, radio, gapless, cold
+    // transitions, source collisions or missing analyses remain neutral.
+    let spectral_trial_low_cut = if !manual
+        && !gapless
+        && !start_paused
+        && state.crossfade_enabled.load(Ordering::Relaxed)
+        && crossfade_secs_override.is_some()
+        && outgoing_fade_secs_override.is_some()
+        && psysonic_analysis::spectral_autodj::live_trial::enabled()
+    {
+        let previous_server = state.current_playback_server_id.lock().unwrap().clone();
+        let previous_track = state.current_analysis_track_id.lock().unwrap().clone();
+        match (
+            previous_server.as_deref(),
+            previous_track.as_deref(),
+            server_id.as_deref(),
+            analysis_track_id.as_deref(),
+        ) {
+            (Some(a_server), Some(a_track), Some(b_server), Some(b_track)) => {
+                psysonic_analysis::spectral_autodj::live_trial::pair_low_cut(
+                    a_server.trim(),
+                    a_track.trim(),
+                    b_server.trim(),
+                    b_track.trim(),
+                )
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     // Manual skip onto the gapless-pre-chained track: reuse raw bytes (no HTTP;
     // preload cache was already consumed when the chain was built). Otherwise
     // clear any stale chain metadata.
@@ -404,6 +441,14 @@ pub async fn audio_play(
         .store(playback_source.is_seekable, Ordering::SeqCst);
     let source_seekable = playback_source.is_seekable;
     let built = playback_source.built;
+    // Arm only the INCOMING source, before it is appended to the mixer.
+    // The separate EQ wrapper remains a bit-identical neutral pass-through
+    // for normal sessions, absent current spectra and non-AutoDJ transitions.
+    if crossfade_enabled && actual_fade_secs >= 0.5 {
+        if let Some(low_cut) = spectral_trial_low_cut {
+            let _ = built.spectral_eq_handle.arm([low_cut, 0.0, 0.0]);
+        }
+    }
     let mut source = built.source;
     let duration_secs = built.duration_secs;
     let output_rate = built.output_rate;
