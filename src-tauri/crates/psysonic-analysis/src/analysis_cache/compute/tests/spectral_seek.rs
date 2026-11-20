@@ -823,3 +823,61 @@ fn spectral_codec_mp3_without_xing_metadata_diagnostic() {
         }
     }
 }
+
+/// Routine FFmpeg-free correctness and fail-closed checks. The same bounded
+/// deterministic WAV provides an independent full-decode reference for both
+/// ends of the timeline, including long outro accurate seeking.
+#[test]
+fn spectral_pcm_window_wav_boundaries_and_failure_guards() {
+    let wav = synthetic_stereo_wav();
+    let full_pcm = full_decode_reference(&wav);
+    for seconds in [0.213_f64, 3.817] {
+        let frames = (seconds * f64::from(SAMPLE_RATE)).ceil() as usize;
+        let samples = frames * CHANNELS;
+        let intro = decode_spectral_pcm_window(&wav, Boundary::Intro, seconds, || true)
+            .expect("valid WAV intro must decode");
+        let outro = decode_spectral_pcm_window(&wav, Boundary::Outro, seconds, || true)
+            .expect("valid WAV outro must decode");
+        assert_eq!(intro.sample_rate, SAMPLE_RATE);
+        assert_eq!(outro.sample_rate, SAMPLE_RATE);
+        assert_eq!(usize::from(intro.channels), CHANNELS);
+        assert_eq!(usize::from(outro.channels), CHANNELS);
+        assert_eq!(intro.pcm, full_pcm[..samples]);
+        assert_eq!(outro.pcm, full_pcm[full_pcm.len() - samples..]);
+    }
+
+    // Invalid user-provided window values must be rejected before decoding.
+    for invalid in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.099, 6.001] {
+        assert!(
+            decode_spectral_pcm_window(&wav, Boundary::Outro, invalid, || true).is_none(),
+            "invalid outro window should return neutral: {invalid}"
+        );
+    }
+    assert!(
+        decode_spectral_pcm_window(&[], Boundary::Intro, 0.213, || true).is_none()
+    );
+    assert!(
+        decode_spectral_pcm_window(b"not a sound file", Boundary::Outro, 0.213, || true)
+            .is_none()
+    );
+    // A truncated WAV with a valid header must not yield a partial spectrum.
+    let truncated = &wav[..44 + 1_024];
+    assert!(
+        decode_spectral_pcm_window(truncated, Boundary::Outro, 0.213, || true)
+            .is_none()
+    );
+
+    // Cancellation before probe, during packet processing, and after enough
+    // PCM is decoded must never hand stale analysis back to the caller.
+    assert!(
+        decode_spectral_pcm_window(&wav, Boundary::Outro, 0.213, || false).is_none()
+    );
+    let mut polls = 0usize;
+    let result = decode_spectral_pcm_window(&wav, Boundary::Outro, 0.213, || {
+        polls += 1;
+        polls < 3
+    });
+    assert!(result.is_none());
+    assert_eq!(polls, 3);
+}
+
