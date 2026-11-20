@@ -285,6 +285,7 @@ mod tests {
             .try_admit(&job(), 1024, Instant::now(), deadline())
             .is_some());
     }
+
     fn verified_wav() -> (SpectralOwnedOriginal, SpectralBoundaryJob, SpectralSourceToken) {
         let bytes = wav();
         let mut selected = source();
@@ -407,5 +408,4 @@ mod tests {
         assert!(worker.await.expect("worker joined").is_none());
         assert!(coordinator.try_reserve(6).is_some());
     }
-
 }
