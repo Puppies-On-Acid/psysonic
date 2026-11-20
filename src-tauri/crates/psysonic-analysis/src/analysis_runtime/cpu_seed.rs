@@ -134,7 +134,6 @@ fn ordinary_pipeline_idle_under_locks(
     )
 }
 
-
 pub fn analysis_pipeline_queue_stats() -> AnalysisPipelineQueueStatsDto {
     let pipeline_workers = ANALYSIS_BACKFILL
         .get()
