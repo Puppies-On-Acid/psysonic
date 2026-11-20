@@ -106,6 +106,102 @@ pub fn analysis_revision_in_cpu_pipeline(server_id: &str, track_id: &str, revisi
     st.contains_revision(server_id, tid, revision)
 }
 
+/// Read-only, fail-closed idle probe for an experimental *optional* spectral
+/// worker. Neither analysis queue is initialized by this observation.
+///
+/// Missing queues, contention, or poisoned locks mean "unknown" rather than
+/// "idle". Hold both locks only while sampling, so a pending CPU reservation
+/// cannot be mistaken for an empty HTTP pipeline. This does NOT reserve CPU
+/// capacity or guarantee that a new ordinary job will not arrive afterward.
+pub(crate) fn spectral_ordinary_pipeline_idle() -> Option<bool> {
+    let http = ANALYSIS_BACKFILL.get()?;
+    let cpu = ANALYSIS_CPU_SEED.get()?;
+    ordinary_pipeline_idle_under_locks(&http.state, &cpu.state)
+}
+
+fn ordinary_pipeline_idle_under_locks(
+    http: &Mutex<super::backfill_queue::AnalysisBackfillQueueState>,
+    cpu: &Mutex<AnalysisCpuSeedQueueState>,
+) -> Option<bool> {
+    let http = http.try_lock().ok()?;
+    let cpu = cpu.try_lock().ok()?;
+    Some(
+        http.queued_len() == 0
+            && http.in_progress.is_empty()
+            && http.awaiting_cpu.is_empty()
+            && cpu.queued_len() == 0
+            && cpu.running.is_empty(),
+    )
+}
+
+#[cfg(test)]
+mod spectral_idle_tests {
+    use super::*;
+    use super::super::backfill_queue::AnalysisBackfillQueueState;
+
+    #[test]
+    fn idle_probe_accounts_for_http_cpu_and_pending_cpu_reservations() {
+        let http = Mutex::new(AnalysisBackfillQueueState::default());
+        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+
+        {
+            let mut state = http.lock().unwrap();
+            state.high.push_back((
+                "track".into(),
+                "synthetic-url".into(),
+                "server".into(),
+            ));
+        }
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().high.clear();
+
+        http.lock()
+            .unwrap()
+            .in_progress
+            .insert("synthetic".into(), AnalysisBackfillPriority::High);
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().in_progress.clear();
+
+        http.lock().unwrap().awaiting_cpu.insert("synthetic".into());
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().awaiting_cpu.clear();
+
+        let (_kind, _rx) = cpu.lock().unwrap().enqueue(
+            "server".into(),
+            "track".into(),
+            vec![1],
+            None,
+            None,
+            AnalysisBackfillPriority::Low,
+            0,
+        );
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        cpu.lock().unwrap().low.clear();
+
+        cpu.lock().unwrap().running.insert(
+            "synthetic".into(),
+            Arc::new(Mutex::new(Vec::new())),
+        );
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        cpu.lock().unwrap().running.clear();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+    }
+
+    #[test]
+    fn idle_probe_never_waits_for_contended_locks() {
+        let http = Mutex::new(AnalysisBackfillQueueState::default());
+        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
+        let held_http = http.lock().unwrap();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
+        drop(held_http);
+        let held_cpu = cpu.lock().unwrap();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
+        drop(held_cpu);
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+    }
+}
+
 pub fn analysis_pipeline_queue_stats() -> AnalysisPipelineQueueStatsDto {
     let pipeline_workers = ANALYSIS_BACKFILL
         .get()
