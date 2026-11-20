@@ -155,9 +155,7 @@ mod spectral_idle_tests {
 
         {
             let mut state = http.lock().unwrap();
-            state
-                .in_progress
-                .insert("synthetic".into(), AnalysisBackfillPriority::High);
+            state.in_progress.insert("synthetic".into(), AnalysisBackfillPriority::High);
         }
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         http.lock().unwrap().in_progress.clear();
