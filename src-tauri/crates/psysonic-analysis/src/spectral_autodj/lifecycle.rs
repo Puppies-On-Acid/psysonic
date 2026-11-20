@@ -144,12 +144,7 @@ impl SpectralAdmissionGate {
         })
     }
 
-    fn settle(
-        &self,
-        ticket: u64,
-        now: Instant,
-        live_source: Option<&SpectralSourceToken>,
-    ) -> bool {
+    fn settle(&self, ticket: u64, now: Instant, live_source: Option<&SpectralSourceToken>) -> bool {
         let Ok(mut state) = self.state.lock() else {
             return false;
         };
@@ -187,11 +182,7 @@ impl SpectralWorkLease {
     /// worker, with a fresh caller-trusted current-source snapshot.
     /// Neither timeout nor cancellation can interrupt a blocked decoder;
     /// they only make the eventual completion ineligible for delivery.
-    pub fn is_current(
-        &self,
-        now: Instant,
-        live_source: Option<&SpectralSourceToken>,
-    ) -> bool {
+    pub fn is_current(&self, now: Instant, live_source: Option<&SpectralSourceToken>) -> bool {
         !self.settled && self.gate.is_current(self.ticket, now, live_source)
     }
 
