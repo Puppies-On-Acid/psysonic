@@ -380,5 +380,8 @@ mod tests {
     }
 }
 
+/// Experimental off-thread admission guard; currently disconnected from playback.
+pub mod lifecycle;
+
 #[cfg(test)]
 mod boundary_tests;
