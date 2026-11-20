@@ -248,14 +248,11 @@ fn calibrate_long_m4a_seek(pns_enabled: bool) {
         let mut first_bad_frame = None;
         let mut last_bad_frame = None;
         let mut bad_frame_count = 0usize;
-        for (frame, (actual, expected)) in tail
-            .pcm
-            .as_chunks::<CHANNELS>()
-            .0
-            .iter()
-            .zip(reference.as_chunks::<CHANNELS>().0.iter())
-            .enumerate()
-        {
+        let (actual_frames, actual_remainder) = tail.pcm.as_chunks::<CHANNELS>();
+        let (reference_frames, reference_remainder) = reference.as_chunks::<CHANNELS>();
+        assert!(actual_remainder.is_empty() && reference_remainder.is_empty());
+        let frame_pairs = actual_frames.iter().zip(reference_frames.iter());
+        for (frame, (actual, expected)) in frame_pairs.enumerate() {
             let bad = actual
                 .iter()
                 .zip(expected)
@@ -460,7 +457,6 @@ fn spectral_codec_pns_rms_characterization() {
                 .map(|(a, b)| (a - b).abs())
                 .fold(0.0f32, f32::max);
 
-
             // The main analyzer samples only eight FFT positions: it can
             // entirely miss the isolated 2048-frame AAC PNS difference.
             // Inspect every complete, non-overlapping FFT-sized tile with
@@ -572,14 +568,11 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
         let mut first_bad = None;
         let mut last_bad = None;
         let mut worst_error = 0.0f32;
-        for (frame, (a, b)) in result
-            .pcm
-            .as_chunks::<CHANNELS>()
-            .0
-            .iter()
-            .zip(reference.as_chunks::<CHANNELS>().0.iter())
-            .enumerate()
-        {
+        let (actual_frames, actual_remainder) = result.pcm.as_chunks::<CHANNELS>();
+        let (reference_frames, reference_remainder) = reference.as_chunks::<CHANNELS>();
+        assert!(actual_remainder.is_empty() && reference_remainder.is_empty());
+        let frame_pairs = actual_frames.iter().zip(reference_frames.iter());
+        for (frame, (a, b)) in frame_pairs.enumerate() {
             let error = a
                 .iter()
                 .zip(b)
