@@ -153,9 +153,12 @@ mod tests {
     async fn idle_probe_allows_owned_bytes_and_preserves_source_identity() {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
-        let worker = try_test_request(&gate, || Some(true))
-            .expect("verified idle source can enter");
-        let done = worker.await.expect("worker joined").expect("valid spectrum");
+        let worker =
+            try_test_request(&gate, || Some(true)).expect("verified idle source can enter");
+        let done = worker
+            .await
+            .expect("worker joined")
+            .expect("valid spectrum");
         assert_eq!(done.source, source());
         assert!(done.bands.low > 0.2);
     }
@@ -170,8 +173,8 @@ mod tests {
         assert!(gate.select_source(Some(source())));
         assert!(try_test_request(&gate, || None).is_none());
         assert!(try_test_request(&gate, || Some(false)).is_none());
-        let worker = try_test_request(&gate, || Some(true))
-            .expect("rejected work did not reserve the slot");
+        let worker =
+            try_test_request(&gate, || Some(true)).expect("rejected work did not reserve the slot");
         assert!(worker.await.expect("worker joined").is_some());
     }
 
@@ -199,10 +202,8 @@ mod tests {
         assert!(gate.select_source(Some(source())));
         let polls = Arc::new(AtomicUsize::new(0));
         let next = Arc::clone(&polls);
-        let worker = try_test_request(&gate, move || {
-            Some(next.fetch_add(1, Ordering::SeqCst) < 6)
-        })
-        .expect("initially idle");
+        let worker = try_test_request(&gate, move || Some(next.fetch_add(1, Ordering::SeqCst) < 6))
+            .expect("initially idle");
         assert!(worker.await.expect("worker joined").is_none());
         assert!(polls.load(Ordering::SeqCst) > 6);
         // The dropped lease must free its slot even when queue pressure
