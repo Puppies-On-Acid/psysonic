@@ -10,6 +10,7 @@ use crate::analysis_perf::emit_analysis_track_perf;
 use super::admission::{ordinary_queue_admission_guard_async, OrdinaryAdmissionGuard};
 use super::backfill_queue::ANALYSIS_BACKFILL;
 use super::enqueue::analysis_emits_ui_events;
+use super::spectral_priority::ordinary_activity_epoch;
 use super::trusted_revision::activate_trusted_identity;
 use super::types::{
     clamp_pipeline_parallelism, AnalysisBackfillPriority, AnalysisPipelineQueueStatsDto,
@@ -106,17 +107,22 @@ pub fn analysis_revision_in_cpu_pipeline(server_id: &str, track_id: &str, revisi
     st.contains_revision(server_id, tid, revision)
 }
 
-/// Read-only, fail-closed idle probe for an experimental *optional* spectral
-/// worker. Neither analysis queue is initialized by this observation.
+/// Read-only, fail-closed ordinary-queue idle ticket for experimental spectral
+/// work. Neither queue is initialized by this observation.
 ///
-/// Missing queues, contention, or poisoned locks mean "unknown" rather than
-/// "idle". Hold both locks only while sampling, so a pending CPU reservation
-/// cannot be mistaken for an empty HTTP pipeline. This does NOT reserve CPU
-/// capacity or guarantee that a new ordinary job will not arrive afterward.
-pub(crate) fn spectral_ordinary_pipeline_idle() -> Option<bool> {
+/// The monotonic epoch is sampled around the two nonblocking queue locks:
+/// even if a submission briefly appears and drains before spectral decodes
+/// the next packet, its epoch change invalidates the previous ticket.
+/// An idle ticket is NOT an exclusive CPU reservation or live source authority.
+pub(crate) fn spectral_ordinary_pipeline_idle_epoch() -> Option<u64> {
+    let before = ordinary_activity_epoch()?;
     let http = ANALYSIS_BACKFILL.get()?;
     let cpu = ANALYSIS_CPU_SEED.get()?;
-    ordinary_pipeline_idle_under_locks(&http.state, &cpu.state)
+    if !ordinary_pipeline_idle_under_locks(&http.state, &cpu.state)? {
+        return None;
+    }
+    let after = ordinary_activity_epoch()?;
+    (before == after).then_some(after)
 }
 
 fn ordinary_pipeline_idle_under_locks(

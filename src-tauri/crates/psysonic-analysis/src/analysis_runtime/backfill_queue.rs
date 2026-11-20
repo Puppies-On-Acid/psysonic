@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use super::cpu_seed::{analysis_track_in_cpu_pipeline, requested_pipeline_parallelism, seed_key};
 use super::http_backfill::{analysis_backfill_worker_loop, should_idle_for_cpu_backpressure};
+use super::spectral_priority::record_ordinary_queue_submission;
 use super::types::{
     clamp_pipeline_parallelism, AnalysisBackfillEnqueueKind, AnalysisBackfillPriority,
     AnalysisTierCounts,
@@ -123,6 +124,9 @@ impl AnalysisBackfillQueueState {
     }
 
     pub(super) fn push_new(&mut self, priority: AnalysisBackfillPriority, job: BackfillJob) {
+        // New and reprioritized HTTP work revoke an older spectral ticket,
+        // even if the ordinary queue drains between successive checks.
+        record_ordinary_queue_submission();
         match priority {
             AnalysisBackfillPriority::High => self.high.push_front(job),
             AnalysisBackfillPriority::Middle => self.middle.push_back(job),

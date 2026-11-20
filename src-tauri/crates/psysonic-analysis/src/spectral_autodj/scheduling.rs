@@ -5,11 +5,11 @@
 //! persistent result or playback integration. Already-authenticated bytes
 //! must be supplied by the caller and are never cloned by this adapter.
 //!
-//! Idle snapshots are advisory: a normal job can start immediately afterward.
-//! Recheck on every decoder callback so that ordinary work emerging during a
-//! spectral attempt causes a neutral result. This cannot preempt a blocked
-//! codec or guarantee zero overlap: live integration still requires explicit
-//! priority arbitration, an activity epoch and a verified byte source.
+//! Idle tickets include a monotonic ordinary-queue activity generation. New
+//! submissions revoke an older ticket even if ordinary queues drain between
+//! decode callbacks. This cannot interrupt blocked codecs or guarantee zero
+//! CPU overlap: live integration still requires shared resource arbitration
+//! and a verified source of already-available media bytes.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 use super::executor::{try_spawn_with_available_bytes, SpectralCompletedBoundary};
 use super::lifecycle::SpectralAdmissionGate;
 use super::{SpectralBoundaryJob, SpectralSourceToken};
-use crate::analysis_runtime::spectral_ordinary_pipeline_idle;
+use crate::analysis_runtime::spectral_ordinary_pipeline_idle_epoch;
 
 /// Attempt an off-thread analysis ONLY when both established ordinary analysis
 /// queues appear idle. Missing, busy, contended or poisoned queues fail closed.
@@ -46,7 +46,7 @@ where
         bytes,
         deadline,
         live_source,
-        spectral_ordinary_pipeline_idle,
+        spectral_ordinary_pipeline_idle_epoch,
     )
 }
 
@@ -56,21 +56,19 @@ fn try_spawn_with_idle_probe<F, P>(
     bytes: Vec<u8>,
     deadline: Instant,
     live_source: F,
-    pipeline_idle: P,
+    pipeline_epoch: P,
 ) -> Option<JoinHandle<Option<SpectralCompletedBoundary>>>
 where
     F: Fn() -> Option<SpectralSourceToken> + Send + 'static,
-    P: Fn() -> Option<bool> + Send + 'static,
+    P: Fn() -> Option<u64> + Send + 'static,
 {
-    if pipeline_idle() != Some(true) {
-        return None;
-    }
+    let admitted_epoch = pipeline_epoch()?;
 
-    // The existing executor revalidates this combined state before the
-    // worker starts, once per decoded packet and at completion. New ordinary
-    // queue activity makes the work ineligible for any consumer.
+    // Revalidate the SAME epoch before admission, once per decoder callback
+    // and at completion. A brief busy -> idle transition cannot resurrect a
+    // previously admitted speculative spectral job.
     try_spawn_with_available_bytes(gate, job, bytes, deadline, move || {
-        if pipeline_idle() == Some(true) {
+        if pipeline_epoch() == Some(admitted_epoch) {
             live_source()
         } else {
             None
@@ -144,7 +142,7 @@ mod tests {
         probe: P,
     ) -> Option<JoinHandle<Option<SpectralCompletedBoundary>>>
     where
-        P: Fn() -> Option<bool> + Send + 'static,
+        P: Fn() -> Option<u64> + Send + 'static,
     {
         try_spawn_with_idle_probe(gate, job(), wav(), deadline(), source_option, probe)
     }
@@ -154,7 +152,7 @@ mod tests {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
         let worker =
-            try_test_request(&gate, || Some(true)).expect("verified idle source can enter");
+            try_test_request(&gate, || Some(5)).expect("verified idle source can enter");
         let done = worker
             .await
             .expect("worker joined")
@@ -172,9 +170,19 @@ mod tests {
         let gate = Arc::new(SpectralAdmissionGate::new());
         assert!(gate.select_source(Some(source())));
         assert!(try_test_request(&gate, || None).is_none());
-        assert!(try_test_request(&gate, || Some(false)).is_none());
+
+        let checks = Arc::new(AtomicUsize::new(0));
+        let next = Arc::clone(&checks);
+        let became_busy = try_test_request(&gate, move || {
+            if next.fetch_add(1, Ordering::SeqCst) == 0 {
+                Some(5)
+            } else {
+                None
+            }
+        });
+        assert!(became_busy.is_none());
         let worker =
-            try_test_request(&gate, || Some(true)).expect("rejected work did not reserve the slot");
+            try_test_request(&gate, || Some(5)).expect("rejected work did not reserve the slot");
         assert!(worker.await.expect("worker joined").is_some());
     }
 
@@ -185,7 +193,11 @@ mod tests {
         let polls = Arc::new(AtomicUsize::new(0));
         let next = Arc::clone(&polls);
         let rejected = try_test_request(&gate, move || {
-            Some(next.fetch_add(1, Ordering::SeqCst) == 0)
+            if next.fetch_add(1, Ordering::SeqCst) == 0 {
+                Some(5)
+            } else {
+                Some(6)
+            }
         });
         // The first idle check passed. Executor admission then rechecked and
         // observed ordinary analysis activity before reserving a worker slot.
@@ -202,8 +214,10 @@ mod tests {
         assert!(gate.select_source(Some(source())));
         let polls = Arc::new(AtomicUsize::new(0));
         let next = Arc::clone(&polls);
-        let worker = try_test_request(&gate, move || Some(next.fetch_add(1, Ordering::SeqCst) < 6))
-            .expect("initially idle");
+        let worker = try_test_request(&gate, move || {
+            (next.fetch_add(1, Ordering::SeqCst) < 6).then_some(5)
+        })
+        .expect("initially idle");
         assert!(worker.await.expect("worker joined").is_none());
         assert!(polls.load(Ordering::SeqCst) > 6);
         // The dropped lease must free its slot even when queue pressure
@@ -212,4 +226,24 @@ mod tests {
             .try_admit(&job(), 1024, Instant::now(), deadline())
             .is_some());
     }
+    #[tokio::test]
+    async fn transient_busy_then_idle_activity_never_revalidates_an_old_epoch() {
+        let gate = Arc::new(SpectralAdmissionGate::new());
+        assert!(gate.select_source(Some(source())));
+        let polls = Arc::new(AtomicUsize::new(0));
+        let next = Arc::clone(&polls);
+        let worker = try_test_request(&gate, move || {
+            // Even after the queue becomes idle again, generation 6 differs
+            // permanently from the originally admitted generation 5.
+            let poll = next.fetch_add(1, Ordering::SeqCst);
+            Some(if poll < 6 { 5 } else { 6 })
+        })
+        .expect("admitted under original idle epoch");
+        assert!(worker.await.expect("worker joined").is_none());
+        assert!(polls.load(Ordering::SeqCst) > 6);
+        assert!(gate
+            .try_admit(&job(), 1024, Instant::now(), deadline())
+            .is_some());
+    }
+
 }

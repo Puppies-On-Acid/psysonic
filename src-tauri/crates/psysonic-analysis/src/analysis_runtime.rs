@@ -3,6 +3,7 @@ mod backfill_queue;
 mod cpu_seed;
 mod enqueue;
 mod http_backfill;
+mod spectral_priority;
 mod trusted_revision;
 mod types;
 
@@ -25,7 +26,7 @@ pub use enqueue::{
     run_track_enrichment_from_bytes, track_analysis_needs_work,
 };
 // Internal, read-only observation for optional spectral scheduling trials.
-pub(crate) use cpu_seed::spectral_ordinary_pipeline_idle;
+pub(crate) use cpu_seed::spectral_ordinary_pipeline_idle_epoch;
 pub(crate) use trusted_revision::commit_trusted_enrichment_if_current;
 pub use trusted_revision::{
     begin_trusted_revision, reserve_trusted_analysis_fetch, TrustedAnalysisFetchPermit,

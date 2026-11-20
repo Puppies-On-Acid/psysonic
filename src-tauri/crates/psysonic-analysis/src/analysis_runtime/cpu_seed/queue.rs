@@ -9,6 +9,7 @@ use super::super::types::{
     clamp_pipeline_parallelism, AnalysisBackfillPriority, AnalysisCpuSeedEnqueueKind,
     AnalysisTierCounts, TrustedAnalysisRevision,
 };
+use super::super::spectral_priority::record_ordinary_queue_submission;
 use super::{analysis_cpu_seed_worker_loop, requested_pipeline_parallelism};
 
 pub(in crate::analysis_runtime) type SeedDoneSender = tokio::sync::oneshot::Sender<
@@ -165,6 +166,9 @@ impl AnalysisCpuSeedQueueState {
         priority: AnalysisBackfillPriority,
         fetch_ms: u64,
     ) -> (AnalysisCpuSeedEnqueueKind, SeedDoneReceiver) {
+        // Revoke older speculative spectral work for every CPU submission,
+        // including merges and running followers, without altering queue order.
+        record_ordinary_queue_submission();
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         // Dedup/merge scope is (server, track, content revision): the same
         // Subsonic id on two servers is two different files, and a different
