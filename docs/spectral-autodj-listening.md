@@ -109,11 +109,77 @@ Summarize win/loss/tie by genre and bass-conflict type, loudness delta and
 artifacts. Share only anonymized aggregate ratings; not private filenames,
 library addresses or copyrighted audio.
 
+## Opt-in live AutoDJ listening in a separate test profile
+
+**New experimental candidate, not yet Windows compiled or app-smoke verified.**
+A session-only flag enables the live capture-to-EQ handoff. The code uses
+already-acquired verified remote originals and already-read verified offline
+originals; it waits up to 20 seconds for ordinary analysis to become idle,
+analyzes both six-second boundaries away from the audio thread and retains at
+most eight ephemeral source-bound summaries. It requires BOTH A-outro and
+B-intro measurements to be available, current and sufficiently bass-heavy.
+Any missing original, incompatible codec, stale revision, busy queue,
+expired data or incomplete preloading means **ordinary AutoDJ unchanged**.
+No duplicate network fetch or persisted spectral cache is created.
+
+The incoming deck receives a smoothly restored low-band cut of at most
+4 dB using a per-source EQ separate from the user's existing ten-band EQ.
+The existing outgoing source, crossfade fader curves, natural silence
+planning, normalization, playback sample counter and sink-swap scheduling
+are not intentionally modified. The source wrapper is neutral when off.
+The trial applies only to **automatic content-driven AutoDJ overlaps**
+that provide the existing dynamic fade overrides: not manual next/previous,
+gapless, paused starts, radio, or plain fixed crossfades. A user seek during
+an active handoff disables spectral coloration.
+
+There is **no new persisted setting, Tauri command or in-app toggle**.
+The trial must be explicitly enabled before app startup using the included
+launcher. That launcher selects a different Tauri app identifier
+(dev.psysonic.player.spectraltrial), intended to keep development profile
+files separate. First confirm the new profile is empty on your Windows
+machine; do not import/copy the regular app database or credentials, and
+do not use a production test account without authorizing that yourself.
+Close other Psysonic dev instances before using port 1420.
+
+Only AFTER the consolidated exact-SHA Windows checks pass, launch one
+variant at a time in PowerShell from a clean feature checkout:
+
+~~~powershell
+Set-Location "D:\Projects\psysonic-spectral-autodj"
+$sha = (git rev-parse HEAD).Trim()
+.\scripts\start-spectral-autodj-live-trial.ps1 -ExpectedHead $sha -Variant baseline
+~~~
+
+Play a representative queue with **crossfade enabled, silence-aware AutoDJ
+enabled, and gapless OFF**; allow the next track to preload and advance
+automatically. Do not trigger manual next/previous for this particular test.
+Close the test app and start the identical test profile/queue again with:
+
+~~~powershell
+.\scripts\start-spectral-autodj-live-trial.ps1 -ExpectedHead $sha -Variant spectral
+~~~
+
+The launcher sets PSYSONIC_SPECTRAL_AUTODJ_TRIAL to 0 or 1 only for its child
+process and restores the original PowerShell environment afterward.
+In developer logs, a successful handoff announces
+[spectral-trial] incoming deck low-band cut armed db=... without logging
+server, track or content identifiers. If that message is absent, the
+experimental path may have fallen back to ordinary AutoDJ: **a null
+difference is not evidence the EQ algorithm is ineffective**. No log of
+private file names is required in public issues.
+
+This live exercise is **not blind** because the launcher mode is known. Use
+the private anonymized WAV pairs above for blinded EQ-preference evaluation.
+Live tests instead check real silence-aware timing, clipping, seeks,
+playback clocks, device changes and natural fades. A failure or unexpected
+sound should end the session and return to baseline mode.
+
 ## Additional readiness gates (separate from this A/B)
 
-- No live player is armed by the audition tool. An opt-in in-app AutoDJ EQ
-  mode still needs a source-pair plan and a separately authorized
-  transition-safe control handoff before real-time listening.
+- The offline WAV renderer never arms the live player. The **separate**
+  session-only trial now has a candidate paired-source/automatic-AutoDJ
+  handoff, but is uncompiled and must pass regression and disposable-profile
+  listening smoke before its safety/performance can be accepted.
 - Native Windows compile, formatting, unit/full audio-analysis tests,
   standalone renderer smoke and strict Clippy at the **new SHA** are pending.
 - Full cross-platform CI, four Linux Bash-only checks, complete repo build,
