@@ -178,7 +178,11 @@ fn write_stereo_pcm16_wav(path: &Path, samples: &[f32]) -> Result<(), String> {
         .ok_or_else(|| "WAV payload too large".to_string())?;
     let file_bytes = payload_bytes.checked_add(36)
         .ok_or_else(|| "WAV RIFF length overflow".to_string())?;
-    let mut wav = File::create(path).map_err(|e| format!("Cannot create WAV: {e}"))?;
+    let mut wav = File::options()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| format!("Cannot create new WAV without overwriting existing audio: {e}"))?;
     wav.write_all(b"RIFF").map_err(|e| e.to_string())?;
     wav.write_all(&file_bytes.to_le_bytes()).map_err(|e| e.to_string())?;
     wav.write_all(b"WAVEfmt ").map_err(|e| e.to_string())?;
@@ -231,6 +235,14 @@ pub fn render_audition_pair(
     } else {
         fs::create_dir_all(output_dir).map_err(|e| format!("Cannot create output directory: {e}"))?;
     }
+    // Refuse any existing artifact before the first output write. This
+    // prevents an accidental OutputDir pointing at a source music folder
+    // from overwriting an original named Sample_1.wav or Sample_2.wav.
+    for output_name in ["Sample_1.wav", "Sample_2.wav", "ANSWER_KEY.txt"] {
+        if output_dir.join(output_name).exists() {
+            return Err(format!("Audition output {output_name} already exists; choose a new empty directory"));
+        }
+    }
     let spectral_first = seed % 2 == 0;
     let (one, two) = if spectral_first {
         (&spectral, &baseline)
@@ -251,7 +263,12 @@ pub fn render_audition_pair(
         if spectral_first { "Spectral" } else { "Ordinary AutoDJ" },
         if spectral_first { "Ordinary AutoDJ" } else { "Spectral" },
     );
-    fs::write(output_dir.join("ANSWER_KEY.txt"), answer)
+    let mut key = File::options()
+        .write(true)
+        .create_new(true)
+        .open(output_dir.join("ANSWER_KEY.txt"))
+        .map_err(|e| format!("Cannot create private answer key without replacing an existing file: {e}"))?;
+    key.write_all(answer.as_bytes())
         .map_err(|e| format!("Cannot write private answer key: {e}"))?;
     Ok(AuditionReport {
         intro_low_cut_db: cut_db,
