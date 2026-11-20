@@ -12,6 +12,7 @@ use crate::spectral_autodj::{analyze_boundary_pcm, Boundary};
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: usize = 2;
 const DURATION_SECONDS: usize = 12;
+const SPECTRAL_TILE_FRAMES: usize = 2_048;
 const MAX_REFERENCE_SAMPLES: usize = SAMPLE_RATE as usize * CHANNELS * 16;
 
 struct ScratchAudioDir(PathBuf);
@@ -459,12 +460,65 @@ fn spectral_codec_pns_rms_characterization() {
                 .map(|(a, b)| (a - b).abs())
                 .fold(0.0f32, f32::max);
 
+
+            // The main analyzer samples only eight FFT positions: it can
+            // entirely miss the isolated 2048-frame AAC PNS difference.
+            // Inspect every complete, non-overlapping FFT-sized tile with
+            // the same production analyzer, without setting a new tolerance.
+            let mut tile_max_pct = [0.0f64; 3];
+            let mut tile_worst_start = [None; 3];
+            let mut pcm_different_tiles = 0usize;
+            let tile_count = window_frames / SPECTRAL_TILE_FRAMES;
+            for tile_index in 0..tile_count {
+                let start_frame = tile_index * SPECTRAL_TILE_FRAMES;
+                let start = start_frame * CHANNELS;
+                let end = start + SPECTRAL_TILE_FRAMES * CHANNELS;
+                let seek_tile = &current.pcm[start..end];
+                let reference_tile = &reference[start..end];
+                if seek_tile
+                    .iter()
+                    .zip(reference_tile)
+                    .any(|(a, b)| (a - b).abs() > 1.0e-5)
+                {
+                    pcm_different_tiles += 1;
+                }
+
+                let a = analyze_boundary_pcm(
+                    seek_tile,
+                    SAMPLE_RATE,
+                    CHANNELS as u16,
+                    Boundary::Outro,
+                )
+                .expect("synthetic AAC tile must contain band energy");
+                let b = analyze_boundary_pcm(
+                    reference_tile,
+                    SAMPLE_RATE,
+                    CHANNELS as u16,
+                    Boundary::Outro,
+                )
+                .expect("full-decode AAC tile must contain band energy");
+                let a = [a.low, a.mid, a.high];
+                let b = [b.low, b.mid, b.high];
+                for band in 0..3 {
+                    let base = f64::from(b[band]);
+                    let value = f64::from(a[band]);
+                    let pct = 100.0 * (value - base).abs() / base.max(1.0e-5);
+                    assert!(pct.is_finite());
+                    if pct > tile_max_pct[band] {
+                        tile_max_pct[band] = pct;
+                        tile_worst_start[band] = Some(start_frame);
+                    }
+                }
+            }
             decode_ms.sort_by(f64::total_cmp);
             fft_ms.sort_by(f64::total_cmp);
             println!(
                 "spectral-codec aac pns={pns_enabled} window={window_seconds:.3} \
                  max_pcm_error={max_pcm:.8} ref_rms={reference_rms:?} \
                  seek_rms={seek_rms:?} relative_pct={rel_pct:?} \
+                 tiles={tile_count} pcm_different_tiles={pcm_different_tiles} \
+                 tile_max_relative_pct={tile_max_pct:?} \
+                 tile_worst_start_frame={tile_worst_start:?} \
                  decode_ms_p50={:.3} fft_ms_p50={:.3} encoded_bytes={} \
                  pcm_bytes={}",
                 decode_ms[2],
@@ -537,10 +591,47 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
                 last_bad = Some(frame);
             }
         }
+        // Only a diagnostic: compare a bounded set of candidate offsets.
+        // A good shift must also match the ENTIRE requested PCM window.
+        // Never apply this shift to the production decoder or reference.
+        let nominal_start = endpoint - wanted_frames;
+        let mut best_shift = 0isize;
+        let mut best_probe_mean = f64::INFINITY;
+        for shift in -4_096isize..=4_096 {
+            let candidate = nominal_start as isize + shift;
+            if candidate < 0 || candidate as usize + wanted_frames > decoded_frames {
+                continue;
+            }
+            let mut sum = 0.0f64;
+            let mut count = 0usize;
+            for frame in (0..wanted_frames.min(8_192)).step_by(32) {
+                let actual_index = frame * CHANNELS;
+                let ref_index = (candidate as usize + frame) * CHANNELS;
+                sum += f64::from((result.pcm[actual_index] - full_pcm[ref_index]).abs());
+                count += 1;
+            }
+            let mean = sum / count as f64;
+            if mean < best_probe_mean {
+                best_probe_mean = mean;
+                best_shift = shift;
+            }
+        }
+        let best_start = usize::try_from(nominal_start as isize + best_shift)
+            .expect("bounded probe chose a nonnegative reference offset");
+        let best_reference =
+            &full_pcm[best_start * CHANNELS..(best_start + wanted_frames) * CHANNELS];
+        let shifted_max_error = result
+            .pcm
+            .iter()
+            .zip(best_reference)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
         println!(
             "spectral-codec mp3-vbr window={window_seconds:.3} \
              max_pcm_error={worst_error:.8} first_bad={first_bad:?} \
-             last_bad={last_bad:?} decode_ms={elapsed_ms:.3}"
+             last_bad={last_bad:?} best_shift_frames={best_shift} \
+             best_probe_mean={best_probe_mean:.8} \
+             shifted_max_error={shifted_max_error:.8} decode_ms={elapsed_ms:.3}"
         );
         if worst_error > 1.0e-5 {
             bad_cases += 1;
