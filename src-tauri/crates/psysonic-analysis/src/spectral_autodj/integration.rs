@@ -14,7 +14,7 @@ use std::time::Instant;
 use tokio::task::JoinHandle;
 
 use super::executor::SpectralCompletedBoundary;
-use super::lifecycle::SpectralAdmissionGate;
+use super::lifecycle::{SpectralAdmissionGate, MAX_ENCODED_BYTES};
 use super::owned_source::SpectralOwnedOriginal;
 use super::scheduling::try_spawn_if_ordinary_analysis_idle;
 use super::{Boundary, SpectralBoundaryJob, SpectralSourceToken};
@@ -224,6 +224,7 @@ impl SpectralCaptureCoordinator {
         if trusted.analysis_bytes_transcoded
             || trusted.generation == 0
             || bytes.is_empty()
+            || bytes.len() > MAX_ENCODED_BYTES
             || bytes.len() != complete_len
             || !trusted_revision_is_current(server, track, &trusted.md5_16kb, trusted.generation)
             || tokio::runtime::Handle::try_current().is_err()
@@ -422,14 +423,16 @@ mod tests {
         wav.extend_from_slice(b"data");
         wav.extend_from_slice(&size.to_le_bytes());
         for i in 0..frames {
-            let sample = (12_000.0 * (std::f64::consts::TAU * 80.0 * f64::from(i)
-                / f64::from(rate))
-                .sin()) as i16;
+            let phase = std::f64::consts::TAU * 80.0 * f64::from(i) / f64::from(rate);
+            let sample = (12_000.0 * phase.sin()) as i16;
             wav.extend_from_slice(&sample.to_le_bytes());
         }
         let revision = crate::analysis_cache::md5_first_16kb(&wav);
-        let generation =
-            crate::analysis_runtime::begin_trusted_revision("spectral-test-server", "track-x", &revision);
+        let generation = crate::analysis_runtime::begin_trusted_revision(
+            "spectral-test-server",
+            "track-x",
+            &revision,
+        );
         let trusted = TrustedAnalysisRevision {
             md5_16kb: revision,
             generation,
@@ -626,5 +629,125 @@ mod tests {
             .await
             .expect("real decoded WAV spectrum");
         assert!(result.bands.low > 0.2);
+    }
+
+    #[tokio::test]
+    async fn offline_dual_address_uses_explicit_library_identity() {
+        let (wav, mut trusted, mut request) = fixture();
+        request.library_scope = "offline-library-b".into();
+        trusted.content_hash_server_id = Some("offline-library-b".into());
+        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
+        assert!(coordinator.arm(request));
+        assert!(coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        let source = SpectralSourceToken {
+            server_scope: "spectral-test-server".into(),
+            library_scope: "offline-library-b".into(),
+            track_id: "track-x".into(),
+            content_revision: trusted.md5_16kb.clone(),
+            generation: trusted.generation,
+        };
+        assert!(ready_after_join(&coordinator, &source).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn superseded_trusted_revision_invalidates_a_completed_result() {
+        let (wav, mut trusted, mut request) = fixture();
+        request.track_id = "isolated-stale-revision-test".into();
+        trusted.generation = crate::analysis_runtime::begin_trusted_revision(
+            &request.server_scope,
+            &request.track_id,
+            &trusted.md5_16kb,
+        );
+        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
+        assert!(coordinator.arm(request.clone()));
+        assert!(coordinator.offer_with(
+            &request.server_scope,
+            &request.track_id,
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        let old_source = SpectralSourceToken {
+            server_scope: request.server_scope.clone(),
+            library_scope: request.library_scope.clone(),
+            track_id: request.track_id.clone(),
+            content_revision: trusted.md5_16kb,
+            generation: trusted.generation,
+        };
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let next = crate::analysis_runtime::begin_trusted_revision(
+            &request.server_scope,
+            &request.track_id,
+            "replacement-revision",
+        );
+        assert_ne!(next, old_source.generation);
+        assert!(coordinator.take_if_current(&old_source).is_none());
+    }
+
+    #[tokio::test]
+    async fn missing_capacity_and_cancellation_fail_neutrally() {
+        let (wav, trusted, request) = fixture();
+        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| None);
+        assert!(coordinator.arm(request.clone()));
+        assert!(!coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        coordinator.cancel();
+        assert!(!coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        assert!(!coordinator.arm(SpectralCaptureRequest {
+            playback_generation: 1,
+            ..request
+        }));
+    }
+
+    #[tokio::test]
+    async fn duplicate_and_incomplete_originals_never_spawn_extra_workers() {
+        let (wav, trusted, request) = fixture();
+        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
+        assert!(coordinator.arm(request));
+        assert!(!coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len() + 1,
+            &trusted,
+            fake_spawn
+        ));
+        assert!(coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        assert!(!coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
     }
 }
