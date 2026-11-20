@@ -363,7 +363,7 @@ pub fn take_capture_result(source: &SpectralSourceToken) -> Option<SpectralCompl
     LIVE_COORDINATOR.get()?.take_if_current(source)
 }
 
-pub(crate) fn offer_existing_original_if_armed(
+pub fn offer_existing_original_if_armed(
     server: &str,
     track: &str,
     bytes: &[u8],
@@ -377,7 +377,7 @@ pub(crate) fn offer_existing_original_if_armed(
 
 /// Reuse only a locally verified original that another caller already read.
 /// The trusted revision is registered ONLY for an explicitly matching request.
-pub(crate) fn offer_verified_local_if_armed(
+pub fn offer_verified_local_if_armed(
     server: &str,
     track: &str,
     bytes: &[u8],
