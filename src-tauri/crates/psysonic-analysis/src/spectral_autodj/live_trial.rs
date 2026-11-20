@@ -314,8 +314,8 @@ mod tests {
         let (a, b) = store.pair("a", "t1", "a", "t2", Instant::now()).unwrap();
         assert_eq!(plan_spectral_bass_handoff(Some(a.outro), Some(b.intro)), 0.0);
 
-        store.completed[0].measured_at = Instant::now() - REUSE_TTL - Duration::from_secs(1);
-        assert!(store.pair("a", "t1", "a", "t2", Instant::now()).is_none());
+        let after_expiration = Instant::now() + REUSE_TTL + Duration::from_secs(1);
+        assert!(store.pair("a", "t1", "a", "t2", after_expiration).is_none());
     }
 
     #[test]
