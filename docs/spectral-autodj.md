@@ -57,7 +57,7 @@ The initial **bass-handoff heuristic is a Psysonic experiment, not a validated r
 **Phase 2A offline performance probe (new candidate; not run yet):** A separately invoked ignored Rust test (`src-tauri/crates/psysonic-analysis/src/spectral_autodj_perf.rs`) synthesizes deterministic interleaved PCM **outside timing** and measures the exact analyzer for 25 consecutive, warmed runs. Cases: a six-second stereo 48 kHz clip and a six-second eight-channel 192 kHz clip (stress case). The probe reports median/p95/max wall time and generated PCM bytes; it does **not** write files or send audio over IPC. Run release mode, with Psysonic and CPU-heavy work closed, on the clean, pinned Windows feature HEAD:
 
 ```powershell
-Set-Location "D:\\Projects\\psysonic-spectral-autodj\\src-tauri"
+Set-Location "D:\Projects\psysonic-spectral-autodj\src-tauri"
 cargo test -p psysonic-analysis --release --lib spectral_autodj_offline_cpu_probe -- --ignored --nocapture --test-threads=1
 ```
 

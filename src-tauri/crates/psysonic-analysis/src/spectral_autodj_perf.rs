@@ -30,7 +30,7 @@ fn measure_case(label: &str, sample_rate: u32, channels: u16) {
     for _ in 0..WARMUP_RUNS {
         let result = analyze_boundary_pcm(&pcm, sample_rate, channels, Boundary::Outro);
         assert!(result.is_some(), "failed warmup for {label}");
-        black_box(result);
+        let _ = black_box(result);
     }
 
     let mut durations = Vec::with_capacity(MEASURED_RUNS);
@@ -44,7 +44,7 @@ fn measure_case(label: &str, sample_rate: u32, channels: u16) {
         );
         durations.push(begin.elapsed());
         assert!(result.is_some(), "failed measurement for {label}");
-        black_box(result);
+        let _ = black_box(result);
     }
 
     durations.sort_unstable();
