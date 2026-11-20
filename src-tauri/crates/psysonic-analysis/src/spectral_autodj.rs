@@ -467,6 +467,9 @@ pub mod owned_source;
 /// Opt-in existing-capture to background-result bridge (no playback caller).
 pub mod integration;
 
+// Session-only experimental paired-tracks listening cache, disabled by default.
+pub mod live_trial;
+
 /// Advisory, revocable CPU-seed priority preflight; not connected to playback.
 pub mod scheduling;
 

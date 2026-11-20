@@ -379,6 +379,14 @@ pub(crate) async fn dispatch_track_analysis_bytes(
                             analysis_bytes_transcoded: false,
                             content_hash_server_id: None,
                         };
+                    // Session-only live trial reuses this same verified original;
+                    // no allocation or background work when the trial is off.
+                    let _ = psysonic_analysis::spectral_autodj::live_trial::offer_verified_original(
+                        server_id,
+                        track_id,
+                        &analysis_bytes,
+                        &trusted_original,
+                    );
                     let _ =
                         psysonic_analysis::spectral_autodj::integration::offer_existing_original_if_armed(
                             server_id,

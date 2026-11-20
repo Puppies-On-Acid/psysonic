@@ -112,6 +112,9 @@ pub async fn enqueue_offline_library_analysis_from_file(
     if let Some(trusted) = trusted_revision.as_ref() {
         // This local file has already been fully read for ordinary analysis.
         // Any armed spectral request reuses its bytes, without a new read.
+        let _ = crate::spectral_autodj::live_trial::offer_verified_original(
+            server_index_key, track_id, &bytes, trusted,
+        );
         let _ = crate::spectral_autodj::integration::offer_existing_original_if_armed(
             server_index_key,
             track_id,

@@ -221,7 +221,7 @@ pub fn offer_verified_original(
                             matches().then_some(src.clone())
                         })?;
                         matches().then_some(PairSnapshot {
-                            token: src,
+                            token: src.clone(),
                             intro,
                             outro,
                             measured_at: Instant::now(),
