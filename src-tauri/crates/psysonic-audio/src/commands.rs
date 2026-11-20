@@ -466,7 +466,13 @@ pub async fn audio_play(
     // for normal sessions, absent current spectra and non-AutoDJ transitions.
     if crossfade_enabled && actual_fade_secs >= 0.5 {
         if let Some(low_cut) = spectral_trial_low_cut {
-            let _ = built.spectral_eq_handle.arm([low_cut, 0.0, 0.0]);
+            if built.spectral_eq_handle.arm([low_cut, 0.0, 0.0]) {
+                // Experimental diagnostic is privacy-safe: no track IDs,
+                // URLs, source hashes or private library details.
+                crate::app_deprintln!(
+                    "[spectral-trial] incoming deck low-band cut armed db={low_cut:.2}"
+                );
+            }
         }
     }
     let mut source = built.source;
