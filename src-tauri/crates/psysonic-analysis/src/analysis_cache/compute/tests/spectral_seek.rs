@@ -479,13 +479,9 @@ fn spectral_codec_pns_rms_characterization() {
                     pcm_different_tiles += 1;
                 }
 
-                let a = analyze_boundary_pcm(
-                    seek_tile,
-                    SAMPLE_RATE,
-                    CHANNELS as u16,
-                    Boundary::Outro,
-                )
-                .expect("synthetic AAC tile must contain band energy");
+                let a =
+                    analyze_boundary_pcm(seek_tile, SAMPLE_RATE, CHANNELS as u16, Boundary::Outro)
+                        .expect("synthetic AAC tile must contain band energy");
                 let b = analyze_boundary_pcm(
                     reference_tile,
                     SAMPLE_RATE,
@@ -547,10 +543,35 @@ fn spectral_codec_vbr_mp3_seek_calibration() {
     let bytes = std::fs::read(mp3).expect("read locally encoded VBR MP3");
     let full_pcm = full_decode_reference(&bytes);
     let decoded_frames = full_pcm.len() / CHANNELS;
-    let endpoint = synthetic_reference_end(&bytes, decoded_frames);
+    // Symphonia's MP3 demuxer reads LAME/Xing delay and padding metadata.
+    // Its declared duration is presentation frames, but the full decoder
+    // runs in gapless(false) mode and returns BOTH delay and tail padding.
+    // Align a strict PCM reference using the demuxer's actual metadata,
+    // not a guessed or codec-specific constant offset.
+    let presentation_frames = synthetic_reference_end(&bytes, decoded_frames);
+    let session = open_decode_session(&bytes, None).expect("probe VBR MP3 gapless metadata");
+    let track = session
+        .format
+        .tracks()
+        .iter()
+        .find(|track| track.id == session.track_id)
+        .expect("selected MP3 audio track");
+    let delay = usize::try_from(track.delay.expect("VBR MP3 must report LAME delay"))
+        .expect("bounded MP3 delay");
+    let padding = usize::try_from(track.padding.expect("VBR MP3 must report LAME padding"))
+        .expect("bounded MP3 padding");
+    let endpoint = delay
+        .checked_add(presentation_frames)
+        .expect("bounded raw reference endpoint");
+    assert_eq!(
+        endpoint.checked_add(padding),
+        Some(decoded_frames),
+        "MP3 LAME delay + presentation duration + padding must equal full raw decode"
+    );
     println!(
         "spectral-codec mp3-vbr full_frames={decoded_frames} \
-         endpoint_frames={endpoint} encoded_bytes={}",
+         presentation_frames={presentation_frames} delay={delay} padding={padding} \
+         reference_endpoint={endpoint} encoded_bytes={}",
         bytes.len()
     );
 
