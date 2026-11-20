@@ -34,8 +34,7 @@ fn frame_timestamp(
     sample_rate: u32,
     time_base: TimeBase,
 ) -> Option<Timestamp> {
-    let sample_ticks = u128::from(time_base.numer.get())
-        .checked_mul(u128::from(sample_rate))?;
+    let sample_ticks = u128::from(time_base.numer.get()).checked_mul(u128::from(sample_rate))?;
     let ticks_per_second = u128::from(time_base.denom.get());
     if sample_ticks > ticks_per_second {
         return None;
@@ -144,8 +143,7 @@ where
                 // seek result so a round-trip through seconds cannot shift it.
                 let preroll_start = start - warmup_frames;
                 let time_base = time_base?;
-                let preroll_ts =
-                    frame_timestamp(start_ts, preroll_start, sample_rate, time_base)?;
+                let preroll_ts = frame_timestamp(start_ts, preroll_start, sample_rate, time_base)?;
                 let target_ts = frame_timestamp(start_ts, start, sample_rate, time_base)?;
                 let seeked_to = format
                     .seek(
@@ -204,8 +202,7 @@ where
             prefix_frames_to_discard -= skip;
             skip
         } else if let Some(target_ts) = target_ts_after_seek {
-            let skip =
-                frames_until_timestamp(target_ts, packet.pts, sample_rate, time_base?)?;
+            let skip = frames_until_timestamp(target_ts, packet.pts, sample_rate, time_base?)?;
             if skip >= available_frames {
                 continue;
             }
@@ -258,10 +255,7 @@ mod timestamp_tests {
         let target = frame_timestamp(origin, 566_800, 48_000, tb).unwrap();
         let packet = frame_timestamp(origin, 565_777, 48_000, tb).unwrap();
         assert_eq!(target.get(), 567_824);
-        assert_eq!(
-            frames_until_timestamp(target, packet, 48_000, tb),
-            Some(1023)
-        );
+        assert_eq!(frames_until_timestamp(target, packet, 48_000, tb), Some(1023));
         assert_eq!(frames_until_timestamp(packet, target, 48_000, tb), None);
     }
 
@@ -272,10 +266,7 @@ mod timestamp_tests {
         let frame = 566_801;
         let target = frame_timestamp(origin, frame, 48_000, fine).unwrap();
         let packet = frame_timestamp(origin, frame - 777, 48_000, fine).unwrap();
-        assert_eq!(
-            frames_until_timestamp(target, packet, 48_000, fine),
-            Some(777)
-        );
+        assert_eq!(frames_until_timestamp(target, packet, 48_000, fine), Some(777));
 
         let coarse = TimeBase::try_new(1, 1_000).unwrap();
         assert!(frame_timestamp(origin, frame, 48_000, coarse).is_none());
