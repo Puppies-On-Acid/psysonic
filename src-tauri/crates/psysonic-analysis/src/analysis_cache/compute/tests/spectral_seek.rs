@@ -142,7 +142,17 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
 
     let full_pcm = full_decode_reference(&m4a);
     let full_frames = full_pcm.len() / CHANNELS;
+    let reported_frames = open_decode_session(&m4a, None)
+        .expect("probe container timeline")
+        .timeline_hint;
+    println!(
+        "spectral-seek fixture source_frames={} decoded_frames={full_frames} \
+         container_frames={reported_frames:?} decoded_minus_source={}",
+        DURATION_SECONDS * SAMPLE_RATE as usize,
+        full_frames as isize - (DURATION_SECONDS * SAMPLE_RATE as usize) as isize
+    );
 
+    let mut failing_windows = 0usize;
     for window_sec in [0.213_f64, 1.137, 3.817] {
         // On a 12-second fixture these all enter the actual
         // accurate-seek + decoder-reset + one-second-preroll branch.
@@ -168,15 +178,53 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
             .zip(&reference[..first_samples])
             .map(|(actual, expected)| (actual - expected).abs())
             .fold(0.0_f32, f32::max);
+        let post_preroll_frame = requested_frames.min(2048);
+        let post_preroll_sample = post_preroll_frame * CHANNELS;
+        let after2048_max = tail.pcm[post_preroll_sample..]
+            .iter()
+            .zip(&reference[post_preroll_sample..])
+            .map(|(actual, expected)| (actual - expected).abs())
+            .fold(0.0_f32, f32::max);
+
+        // Diagnostic only: locate a possible constant offset between the
+        // decoded reference and demuxer presentation timeline. Never apply
+        // the shift to the decoder or relax the strict original assertion.
+        let nominal_start = full_frames - requested_frames;
+        let mut best_shift_frames = 0isize;
+        let mut best_probe_mean = f64::INFINITY;
+        for shift in -4096isize..=4096 {
+            let candidate = nominal_start as isize + shift;
+            if candidate < 0 || candidate as usize + requested_frames > full_frames {
+                continue;
+            }
+            let mut sum = 0.0f64;
+            let mut count = 0usize;
+            for frame in (0..requested_frames.min(8192)).step_by(32) {
+                let reference_index = (candidate as usize + frame) * CHANNELS;
+                let sample_index = frame * CHANNELS;
+                sum += f64::from((tail.pcm[sample_index] - full_pcm[reference_index]).abs());
+                count += 1;
+            }
+            let mean = sum / count as f64;
+            if mean < best_probe_mean {
+                best_probe_mean = mean;
+                best_shift_frames = shift;
+            }
+        }
         println!(
             "spectral-seek m4a duration_s={DURATION_SECONDS} full_frames={full_frames} \
              window_s={window_sec:.3} max_error={max_error:.8} \
-             first1024_max={first_max:.8}"
+             first1024_max={first_max:.8} after2048_max={after2048_max:.8} \
+             best_shift_frames={best_shift_frames} \
+             best_shift_probe_mean={best_probe_mean:.8}"
         );
-        assert!(
-            max_error <= 1.0e-5,
-            "long AAC/M4A outro mismatch at {window_sec:.3}s: \
-             maximum PCM error {max_error:.8}"
-        );
+        if max_error > 1.0e-5 {
+            failing_windows += 1;
+        }
     }
+    assert_eq!(
+        failing_windows, 0,
+        "long AAC/M4A PCM mismatch on {failing_windows} of three windows; \
+         strict max_error <= 1.0e-5 required for each"
+    );
 }
