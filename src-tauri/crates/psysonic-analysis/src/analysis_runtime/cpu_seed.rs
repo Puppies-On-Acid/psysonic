@@ -153,10 +153,12 @@ mod spectral_idle_tests {
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         http.lock().unwrap().high.clear();
 
-        http.lock()
-            .unwrap()
-            .in_progress
-            .insert("synthetic".into(), AnalysisBackfillPriority::High);
+        {
+            let mut state = http.lock().unwrap();
+            state
+                .in_progress
+                .insert("synthetic".into(), AnalysisBackfillPriority::High);
+        }
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         http.lock().unwrap().in_progress.clear();
 
@@ -177,10 +179,7 @@ mod spectral_idle_tests {
         cpu.lock().unwrap().low.clear();
 
         let followers = Arc::new(Mutex::new(Vec::new()));
-        cpu.lock()
-            .unwrap()
-            .running
-            .insert("synthetic".into(), followers);
+        cpu.lock().unwrap().running.insert("synthetic".into(), followers);
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         cpu.lock().unwrap().running.clear();
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
