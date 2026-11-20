@@ -13,7 +13,7 @@ tauri = { version = "2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
-tokio = { version = "1", features = ["rt", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
 reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "gzip", "brotli"] }
 futures-util = "0.3"
 ebur128 = "0.1"

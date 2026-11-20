@@ -211,7 +211,6 @@ where
     Some(bands)
 }
 
-
 /// Fully decoded, bounded boundary PCM for an explicit local audition.
 /// This public helper exposes only existing read-only analysis; callers must
 /// already own complete original bytes. It never downloads or writes media.
@@ -226,9 +225,8 @@ pub fn decode_audition_pcm(
     boundary: Boundary,
     seconds: f64,
 ) -> Option<SpectralAuditionPcm> {
-    let window = crate::analysis_cache::decode_spectral_pcm_window(
-        bytes, boundary, seconds, || true,
-    )?;
+    let window =
+        crate::analysis_cache::decode_spectral_pcm_window(bytes, boundary, seconds, || true)?;
     Some(SpectralAuditionPcm {
         pcm: window.pcm,
         sample_rate: window.sample_rate,
@@ -462,18 +460,29 @@ mod audition_contract_tests {
 
     #[test]
     fn duplicate_planner_policy_is_neutral_for_unknown_and_invalid() {
-        let heavy = SpectralBandRms { low: 0.8, mid: 0.1, high: 0.1 };
-        let light = SpectralBandRms { low: 0.1, mid: 0.45, high: 0.45 };
+        let heavy = SpectralBandRms {
+            low: 0.8,
+            mid: 0.1,
+            high: 0.1,
+        };
+        let light = SpectralBandRms {
+            low: 0.1,
+            mid: 0.45,
+            high: 0.45,
+        };
         assert_eq!(plan_spectral_bass_handoff(Some(heavy), None), 0.0);
         assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(light)), 0.0);
         assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(heavy)), -4.0);
         assert_eq!(
             plan_spectral_bass_handoff(
                 Some(heavy),
-                Some(SpectralBandRms { low: f32::NAN, mid: 1.0, high: 0.0 })
+                Some(SpectralBandRms {
+                    low: f32::NAN,
+                    mid: 1.0,
+                    high: 0.0
+                })
             ),
             0.0
         );
     }
 }
-

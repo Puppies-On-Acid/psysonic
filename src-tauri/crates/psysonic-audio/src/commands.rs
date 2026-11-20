@@ -1181,31 +1181,76 @@ mod spectral_trial_guard_tests {
     #[test]
     fn only_automatic_content_driven_overlaps_are_eligible() {
         assert!(spectral_trial_handoff_eligible(
-            false, false, false, true, Some(3.5), Some(0.0)
+            false,
+            false,
+            false,
+            true,
+            Some(3.5),
+            Some(0.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            true, false, false, true, Some(3.5), Some(3.0)
+            true,
+            false,
+            false,
+            true,
+            Some(3.5),
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, true, false, true, Some(3.5), Some(3.0)
+            false,
+            true,
+            false,
+            true,
+            Some(3.5),
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, true, true, Some(3.5), Some(3.0)
+            false,
+            false,
+            true,
+            true,
+            Some(3.5),
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, false, false, Some(3.5), Some(3.0)
+            false,
+            false,
+            false,
+            false,
+            Some(3.5),
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, false, true, None, Some(3.0)
+            false,
+            false,
+            false,
+            true,
+            None,
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, false, true, Some(3.5), None
+            false,
+            false,
+            false,
+            true,
+            Some(3.5),
+            None
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, false, true, Some(f32::NAN), Some(3.0)
+            false,
+            false,
+            false,
+            true,
+            Some(f32::NAN),
+            Some(3.0)
         ));
         assert!(!spectral_trial_handoff_eligible(
-            false, false, false, true, Some(3.5), Some(-1.0)
+            false,
+            false,
+            false,
+            true,
+            Some(3.5),
+            Some(-1.0)
         ));
     }
 }

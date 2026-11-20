@@ -13,22 +13,35 @@ fn run() -> Result<(), String> {
 
     while let Some(flag) = args.next() {
         match flag.as_str() {
-            "--outgoing" => outgoing = Some(PathBuf::from(
-                args.next().ok_or("--outgoing requires a file path")?,
-            )),
-            "--incoming" => incoming = Some(PathBuf::from(
-                args.next().ok_or("--incoming requires a file path")?,
-            )),
-            "--output" => output = Some(PathBuf::from(
-                args.next().ok_or("--output requires a directory")?,
-            )),
+            "--outgoing" => {
+                outgoing = Some(PathBuf::from(
+                    args.next().ok_or("--outgoing requires a file path")?,
+                ))
+            }
+            "--incoming" => {
+                incoming = Some(PathBuf::from(
+                    args.next().ok_or("--incoming requires a file path")?,
+                ))
+            }
+            "--output" => {
+                output = Some(PathBuf::from(
+                    args.next().ok_or("--output requires a directory")?,
+                ))
+            }
             "--overlap" => {
-                overlap_secs = args.next().ok_or("--overlap requires seconds")?
-                    .parse().map_err(|_| "Invalid overlap seconds")?;
+                overlap_secs = args
+                    .next()
+                    .ok_or("--overlap requires seconds")?
+                    .parse()
+                    .map_err(|_| "Invalid overlap seconds")?;
             }
             "--seed" => {
-                seed = Some(args.next().ok_or("--seed requires an integer")?
-                    .parse::<u64>().map_err(|_| "Invalid seed")?);
+                seed = Some(
+                    args.next()
+                        .ok_or("--seed requires an integer")?
+                        .parse::<u64>()
+                        .map_err(|_| "Invalid seed")?,
+                );
             }
             "--help" | "-h" => {
                 println!("Spectral AutoDJ local blind A/B audition");
@@ -51,12 +64,21 @@ fn run() -> Result<(), String> {
     });
 
     let report = psysonic_audio::spectral_audition::render_audition_pair(
-        &outgoing, &incoming, &output, overlap_secs, seed,
+        &outgoing,
+        &incoming,
+        &output,
+        overlap_secs,
+        seed,
     )?;
     println!("Created Sample_1.wav, Sample_2.wav and private ANSWER_KEY.txt");
-    println!("Duration: {:.2} sec; overlap {:.2} sec", report.duration_secs, report.overlap_secs);
-    println!("Broadband RMS match delta: {:.4} dB; peak: {:.4}",
-        report.rms_difference_db, report.max_sample);
+    println!(
+        "Duration: {:.2} sec; overlap {:.2} sec",
+        report.duration_secs, report.overlap_secs
+    );
+    println!(
+        "Broadband RMS match delta: {:.4} dB; peak: {:.4}",
+        report.rms_difference_db, report.max_sample
+    );
     println!("Keep the answer key hidden until after rating both clips.");
     if report.intro_low_cut_db == 0.0 {
         println!("Neutral-control pair: the source spectra did not justify a bass cut.");

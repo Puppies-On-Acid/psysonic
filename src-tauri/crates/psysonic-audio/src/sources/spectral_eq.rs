@@ -22,7 +22,9 @@ impl ThreeBandEnvelope {
     pub(crate) fn new(start_db: [f32; 3], duration: Duration) -> Option<Self> {
         if duration.is_zero()
             || duration.as_secs_f64() > MAX_ENVELOPE_SECS
-            || !start_db.iter().all(|v| v.is_finite() && (-4.0..=0.0).contains(v))
+            || !start_db
+                .iter()
+                .all(|v| v.is_finite() && (-4.0..=0.0).contains(v))
         {
             return None;
         }
@@ -68,12 +70,11 @@ pub(crate) struct ThreeBandEq {
 
 impl ThreeBandEq {
     pub(crate) fn new(rate: u32, channels: u16, envelope: Option<ThreeBandEnvelope>) -> Self {
-        let valid = (8_000..=192_000).contains(&rate)
-            && (1..=CHANNEL_CAP as u16).contains(&channels);
+        let valid =
+            (8_000..=192_000).contains(&rate) && (1..=CHANNEL_CAP as u16).contains(&channels);
         let active = valid && envelope.is_some_and(|p| p.start_db != [0.0; 3]);
-        let initial_linear = envelope.map_or([1.0; 3], |p| {
-            p.start_db.map(|db| 10_f32.powf(db / 20.0))
-        });
+        let initial_linear =
+            envelope.map_or([1.0; 3], |p| p.start_db.map(|db| 10_f32.powf(db / 20.0)));
         let seconds = envelope.map_or(0.0, |p| p.duration.as_secs_f64());
         let frames = (seconds * f64::from(rate)).round().max(1.0) as u64;
         let sample_rate = rate.max(1) as f32;
@@ -96,8 +97,8 @@ impl ThreeBandEq {
             return sample;
         }
         if self.channel_index == 0 {
-            let progress = (self.frame_index as f64 / self.envelope_frames as f64)
-                .clamp(0.0, 1.0) as f32;
+            let progress =
+                (self.frame_index as f64 / self.envelope_frames as f64).clamp(0.0, 1.0) as f32;
             let x = ((progress - 0.1) / 0.7).clamp(0.0, 1.0);
             let recovery = x * x * (3.0 - 2.0 * x);
             for band in 0..3 {
@@ -116,7 +117,11 @@ impl ThreeBandEq {
             self.channel_index = 0;
             self.frame_index = self.frame_index.saturating_add(1);
         }
-        if result.is_finite() { result } else { sample }
+        if result.is_finite() {
+            result
+        } else {
+            sample
+        }
     }
 
     pub(crate) fn reset(&mut self) {
@@ -136,7 +141,9 @@ pub(crate) struct SpectralEqHandle {
 
 impl SpectralEqHandle {
     pub(crate) fn arm(&self, start_db: [f32; 3]) -> bool {
-        if !start_db.iter().all(|db| db.is_finite() && (-4.0..=0.0).contains(db))
+        if !start_db
+            .iter()
+            .all(|db| db.is_finite() && (-4.0..=0.0).contains(db))
             || self.armed.load(Ordering::Acquire)
         {
             return false;
@@ -187,7 +194,11 @@ impl<S: Source<Item = f32>> SpectralEqSource<S> {
                 f32::from_bits(self.handle.gain_bits[i].load(Ordering::Relaxed))
             });
             let plan = ThreeBandEnvelope::new(db, self.fade);
-            self.dsp = ThreeBandEq::new(self.inner.sample_rate().get(), self.inner.channels().get(), plan);
+            self.dsp = ThreeBandEq::new(
+                self.inner.sample_rate().get(),
+                self.inner.channels().get(),
+                plan,
+            );
         }
     }
 }
@@ -273,13 +284,18 @@ mod tests {
         let low_ratio = sine_rms(48_000, 45.0, plan) / sine_rms(48_000, 45.0, None);
         let high_ratio = sine_rms(48_000, 6_000.0, plan) / sine_rms(48_000, 6_000.0, None);
         assert!((0.55..0.90).contains(&low_ratio), "bass ratio {low_ratio}");
-        assert!((0.92..1.08).contains(&high_ratio), "treble ratio {high_ratio}");
+        assert!(
+            (0.92..1.08).contains(&high_ratio),
+            "treble ratio {high_ratio}"
+        );
     }
 
     #[test]
     fn antiphase_stereo_stays_independent() {
         let mut dsp = ThreeBandEq::new(
-            48_000, 2, ThreeBandEnvelope::new([-4.0, 0.0, 0.0], Duration::from_secs(4))
+            48_000,
+            2,
+            ThreeBandEnvelope::new([-4.0, 0.0, 0.0], Duration::from_secs(4)),
         );
         for i in 0..15_000 {
             let x = (std::f32::consts::TAU * 60.0 * i as f32 / 48_000.0).sin() * 0.5;
@@ -292,7 +308,9 @@ mod tests {
     #[test]
     fn recovery_and_seek_reset_are_deterministic() {
         let mut dsp = ThreeBandEq::new(
-            48_000, 1, ThreeBandEnvelope::new([-4.0, 0.0, 0.0], Duration::from_millis(100))
+            48_000,
+            1,
+            ThreeBandEnvelope::new([-4.0, 0.0, 0.0], Duration::from_millis(100)),
         );
         for idx in 0..8_000 {
             let x = (std::f32::consts::TAU * 50.0 * idx as f32 / 48_000.0).sin() * 0.5;
@@ -332,7 +350,10 @@ mod tests {
         assert!(!filtered_handle.arm([-4.0, 0.0, 0.0]));
         let output = source.collect::<Vec<_>>();
         assert_eq!(output.len(), data.len());
-        assert!(output.iter().zip(data.iter()).any(|(a, b)| (a - b).abs() > 0.01));
+        assert!(output
+            .iter()
+            .zip(data.iter())
+            .any(|(a, b)| (a - b).abs() > 0.01));
         assert!(output.iter().all(|v| v.is_finite()));
     }
 

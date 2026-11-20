@@ -38,7 +38,9 @@ pub struct AuditionReport {
 fn read_original(path: &Path) -> Result<Vec<u8>, String> {
     let meta = fs::metadata(path).map_err(|e| format!("Cannot inspect original audio: {e}"))?;
     if !meta.is_file() || meta.len() == 0 || meta.len() > MAX_FILE_BYTES {
-        return Err(format!("Select a complete audio file between 1 byte and {MAX_FILE_BYTES} bytes"));
+        return Err(format!(
+            "Select a complete audio file between 1 byte and {MAX_FILE_BYTES} bytes"
+        ));
     }
     let bytes = fs::read(path).map_err(|e| format!("Cannot read original audio: {e}"))?;
     let after = fs::metadata(path).map_err(|e| format!("Cannot recheck original audio: {e}"))?;
@@ -59,7 +61,7 @@ fn to_48k_stereo(input: &SpectralAuditionPcm) -> Result<Vec<f32>, String> {
     let channels = usize::from(input.channels);
     if !(1..=2).contains(&channels)
         || !(8_000..=192_000).contains(&input.sample_rate)
-        || input.pcm.len() % channels != 0
+        || !input.pcm.len().is_multiple_of(channels)
     {
         return Err("Audition requires mono/stereo decoded PCM; use a different pair for multichannel tests".into());
     }
@@ -67,8 +69,8 @@ fn to_48k_stereo(input: &SpectralAuditionPcm) -> Result<Vec<f32>, String> {
     if frames < 1_024 {
         return Err("Audio boundary is too short for a representative audition".into());
     }
-    let output_frames = ((frames as f64 * OUTPUT_RATE as f64
-        / f64::from(input.sample_rate)).round()) as usize;
+    let output_frames =
+        ((frames as f64 * OUTPUT_RATE as f64 / f64::from(input.sample_rate)).round()) as usize;
     let mut out = Vec::with_capacity(output_frames * OUTPUT_CHANNELS);
     for dst in 0..output_frames {
         let position = dst as f64 * f64::from(input.sample_rate) / f64::from(OUTPUT_RATE);
@@ -94,9 +96,10 @@ fn render_fixed_overlap(
     overlap_secs: f64,
     bass_cut_db: f32,
 ) -> Result<Vec<f32>, String> {
-    if !overlap_secs.is_finite() || !(1.0..=5.0).contains(&overlap_secs)
-        || outgoing.len() % OUTPUT_CHANNELS != 0
-        || incoming.len() % OUTPUT_CHANNELS != 0
+    if !overlap_secs.is_finite()
+        || !(1.0..=5.0).contains(&overlap_secs)
+        || !outgoing.len().is_multiple_of(OUTPUT_CHANNELS)
+        || !incoming.len().is_multiple_of(OUTPUT_CHANNELS)
     {
         return Err("Overlap must be 1 to 5 seconds with valid interleaved stereo PCM".into());
     }
@@ -143,7 +146,10 @@ fn render_fixed_overlap(
 }
 
 fn root_mean_square(samples: &[f32]) -> f64 {
-    let sum = samples.iter().map(|v| f64::from(*v) * f64::from(*v)).sum::<f64>();
+    let sum = samples
+        .iter()
+        .map(|v| f64::from(*v) * f64::from(*v))
+        .sum::<f64>();
     (sum / samples.len().max(1) as f64).sqrt()
 }
 
@@ -167,16 +173,22 @@ fn normalize_pair(baseline: &mut [f32], spectral: &mut [f32]) -> Result<(f64, f3
         *value *= (gain_b * common) as f32;
     }
     let rms_diff_db = 20.0 * (root_mean_square(baseline) / root_mean_square(spectral)).log10();
-    let peak = baseline.iter().chain(spectral.iter())
-        .map(|v| v.abs()).fold(0.0_f32, f32::max);
+    let peak = baseline
+        .iter()
+        .chain(spectral.iter())
+        .map(|v| v.abs())
+        .fold(0.0_f32, f32::max);
     Ok((rms_diff_db, peak))
 }
 
 fn write_stereo_pcm16_wav(path: &Path, samples: &[f32]) -> Result<(), String> {
-    let payload_bytes = samples.len().checked_mul(2)
+    let payload_bytes = samples
+        .len()
+        .checked_mul(2)
         .and_then(|count| u32::try_from(count).ok())
         .ok_or_else(|| "WAV payload too large".to_string())?;
-    let file_bytes = payload_bytes.checked_add(36)
+    let file_bytes = payload_bytes
+        .checked_add(36)
         .ok_or_else(|| "WAV RIFF length overflow".to_string())?;
     let mut wav = File::options()
         .write(true)
@@ -184,20 +196,30 @@ fn write_stereo_pcm16_wav(path: &Path, samples: &[f32]) -> Result<(), String> {
         .open(path)
         .map_err(|e| format!("Cannot create new WAV without overwriting existing audio: {e}"))?;
     wav.write_all(b"RIFF").map_err(|e| e.to_string())?;
-    wav.write_all(&file_bytes.to_le_bytes()).map_err(|e| e.to_string())?;
+    wav.write_all(&file_bytes.to_le_bytes())
+        .map_err(|e| e.to_string())?;
     wav.write_all(b"WAVEfmt ").map_err(|e| e.to_string())?;
-    wav.write_all(&16_u32.to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&1_u16.to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&2_u16.to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&OUTPUT_RATE.to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&(OUTPUT_RATE * 4).to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&4_u16.to_le_bytes()).map_err(|e| e.to_string())?;
-    wav.write_all(&16_u16.to_le_bytes()).map_err(|e| e.to_string())?;
+    wav.write_all(&16_u32.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&1_u16.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&2_u16.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&OUTPUT_RATE.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&(OUTPUT_RATE * 4).to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&4_u16.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+    wav.write_all(&16_u16.to_le_bytes())
+        .map_err(|e| e.to_string())?;
     wav.write_all(b"data").map_err(|e| e.to_string())?;
-    wav.write_all(&payload_bytes.to_le_bytes()).map_err(|e| e.to_string())?;
+    wav.write_all(&payload_bytes.to_le_bytes())
+        .map_err(|e| e.to_string())?;
     for sample in samples {
         let quantized = (sample.clamp(-1.0, 1.0) * 32767.0).round() as i16;
-        wav.write_all(&quantized.to_le_bytes()).map_err(|e| e.to_string())?;
+        wav.write_all(&quantized.to_le_bytes())
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -233,17 +255,20 @@ pub fn render_audition_pair(
             return Err("Output path is not a directory".into());
         }
     } else {
-        fs::create_dir_all(output_dir).map_err(|e| format!("Cannot create output directory: {e}"))?;
+        fs::create_dir_all(output_dir)
+            .map_err(|e| format!("Cannot create output directory: {e}"))?;
     }
     // Refuse any existing artifact before the first output write. This
     // prevents an accidental OutputDir pointing at a source music folder
     // from overwriting an original named Sample_1.wav or Sample_2.wav.
     for output_name in ["Sample_1.wav", "Sample_2.wav", "ANSWER_KEY.txt"] {
         if output_dir.join(output_name).exists() {
-            return Err(format!("Audition output {output_name} already exists; choose a new empty directory"));
+            return Err(format!(
+                "Audition output {output_name} already exists; choose a new empty directory"
+            ));
         }
     }
-    let spectral_first = seed % 2 == 0;
+    let spectral_first = seed.is_multiple_of(2);
     let (one, two) = if spectral_first {
         (&spectral, &baseline)
     } else {
@@ -260,14 +285,24 @@ pub fn render_audition_pair(
          Same PCM, equal-power fades, 48kHz stereo and overlap in both versions.\n\
          RMS matching is not a formal BS.1770 LUFS match.\n\
          A zero cut means both mixes should sound identical (neutral control).\n",
-        if spectral_first { "Spectral" } else { "Ordinary AutoDJ" },
-        if spectral_first { "Ordinary AutoDJ" } else { "Spectral" },
+        if spectral_first {
+            "Spectral"
+        } else {
+            "Ordinary AutoDJ"
+        },
+        if spectral_first {
+            "Ordinary AutoDJ"
+        } else {
+            "Spectral"
+        },
     );
     let mut key = File::options()
         .write(true)
         .create_new(true)
         .open(output_dir.join("ANSWER_KEY.txt"))
-        .map_err(|e| format!("Cannot create private answer key without replacing an existing file: {e}"))?;
+        .map_err(|e| {
+            format!("Cannot create private answer key without replacing an existing file: {e}")
+        })?;
     key.write_all(answer.as_bytes())
         .map_err(|e| format!("Cannot write private answer key: {e}"))?;
     Ok(AuditionReport {
@@ -324,7 +359,7 @@ mod tests {
         };
         let stereo = to_48k_stereo(&pcm).unwrap();
         assert_eq!(stereo.len() % 2, 0);
-        for pair in stereo.chunks_exact(2) {
+        for pair in stereo.as_chunks::<2>().0 {
             assert_eq!(pair[0], pair[1]);
         }
     }
@@ -348,7 +383,9 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "psysonic_spectral_audition_test_{}_{}", std::process::id(), seed
+            "psysonic_spectral_audition_test_{}_{}",
+            std::process::id(),
+            seed
         ));
         fs::create_dir_all(&dir).unwrap();
         let outgoing = dir.join("synthetic_a.wav");
@@ -357,10 +394,8 @@ mod tests {
         write_stereo_pcm16_wav(&outgoing, &wave(62.0)).unwrap();
         write_stereo_pcm16_wav(&incoming, &wave(88.0)).unwrap();
 
-        let report = render_audition_pair(
-            &outgoing, &incoming, &output, 3.5, 2,
-        )
-        .expect("synthetic original-to-audition pipeline");
+        let report = render_audition_pair(&outgoing, &incoming, &output, 3.5, 2)
+            .expect("synthetic original-to-audition pipeline");
         assert!(report.intro_low_cut_db < -1.0);
         assert!(report.first_file_spectral);
         assert!(report.max_sample < 1.0);
@@ -381,7 +416,9 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "psysonic_spectral_preserve_test_{}_{}", std::process::id(), seed
+            "psysonic_spectral_preserve_test_{}_{}",
+            std::process::id(),
+            seed
         ));
         fs::create_dir_all(&dir).unwrap();
         let a = dir.join("a.wav");
@@ -394,7 +431,10 @@ mod tests {
         fs::write(&existing, b"original user audio - must not change").unwrap();
 
         assert!(render_audition_pair(&a, &b, &output, 3.0, 11).is_err());
-        assert_eq!(fs::read(existing).unwrap(), b"original user audio - must not change");
+        assert_eq!(
+            fs::read(existing).unwrap(),
+            b"original user audio - must not change"
+        );
         assert!(!output.join("Sample_2.wav").exists());
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -14,9 +14,7 @@ mod spectral_eq;
 mod gapless_rate_tests;
 
 pub(crate) use eq::EqSource;
-pub(crate) use spectral_eq::{
-    SpectralEqHandle, SpectralEqSource, ThreeBandEnvelope, ThreeBandEq,
-};
+pub(crate) use spectral_eq::{SpectralEqHandle, SpectralEqSource, ThreeBandEnvelope, ThreeBandEq};
 
 /// Give each gapless track its own output-rate converter before Rodio queues it.
 /// The mixer's converter wraps the *whole* Player queue and cannot detect a

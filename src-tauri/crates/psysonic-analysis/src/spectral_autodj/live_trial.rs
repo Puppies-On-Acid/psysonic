@@ -58,8 +58,7 @@ impl TrialStore {
     }
 
     fn has(&self, source: &SpectralSourceToken) -> bool {
-        self.pending.contains(source)
-            || self.completed.iter().any(|entry| entry.token == *source)
+        self.pending.contains(source) || self.completed.iter().any(|entry| entry.token == *source)
     }
 
     fn pair(
@@ -254,10 +253,13 @@ pub fn pair_low_cut(
     if !enabled() {
         return None;
     }
-    let (outgoing, incoming) = shared_store()
-        .try_lock()
-        .ok()?
-        .pair(from_server, from_track, to_server, to_track, Instant::now())?;
+    let (outgoing, incoming) = shared_store().try_lock().ok()?.pair(
+        from_server,
+        from_track,
+        to_server,
+        to_track,
+        Instant::now(),
+    )?;
     if !valid_now(&outgoing.token) || !valid_now(&incoming.token) {
         return None;
     }
@@ -299,11 +301,23 @@ mod tests {
     #[test]
     fn cross_server_and_duplicate_track_scopes_never_mix() {
         let mut store = TrialStore::default();
-        store.finished(&token("server-a", "shared"), Some(snapshot("server-a", "shared", 0.8)));
-        store.finished(&token("server-b", "shared"), Some(snapshot("server-b", "shared", 0.8)));
-        assert!(store.pair("server-a", "shared", "server-b", "shared", Instant::now()).is_some());
-        assert!(store.pair("server-a", "shared", "server-a", "shared", Instant::now()).is_none());
-        assert!(store.pair("server-c", "shared", "server-b", "shared", Instant::now()).is_none());
+        store.finished(
+            &token("server-a", "shared"),
+            Some(snapshot("server-a", "shared", 0.8)),
+        );
+        store.finished(
+            &token("server-b", "shared"),
+            Some(snapshot("server-b", "shared", 0.8)),
+        );
+        assert!(store
+            .pair("server-a", "shared", "server-b", "shared", Instant::now())
+            .is_some());
+        assert!(store
+            .pair("server-a", "shared", "server-a", "shared", Instant::now())
+            .is_none());
+        assert!(store
+            .pair("server-c", "shared", "server-b", "shared", Instant::now())
+            .is_none());
     }
 
     #[test]
@@ -312,7 +326,10 @@ mod tests {
         store.finished(&token("a", "t1"), Some(snapshot("a", "t1", 0.8)));
         store.finished(&token("a", "t2"), Some(snapshot("a", "t2", 0.1)));
         let (a, b) = store.pair("a", "t1", "a", "t2", Instant::now()).unwrap();
-        assert_eq!(plan_spectral_bass_handoff(Some(a.outro), Some(b.intro)), 0.0);
+        assert_eq!(
+            plan_spectral_bass_handoff(Some(a.outro), Some(b.intro)),
+            0.0
+        );
 
         let after_expiration = Instant::now() + REUSE_TTL + Duration::from_secs(1);
         assert!(store.pair("a", "t1", "a", "t2", after_expiration).is_none());
@@ -329,7 +346,10 @@ mod tests {
         assert!(store.pending.is_empty());
         for i in 0..20 {
             let name = format!("song-{i}");
-            store.finished(&token("server", &name), Some(snapshot("server", &name, 0.8)));
+            store.finished(
+                &token("server", &name),
+                Some(snapshot("server", &name, 0.8)),
+            );
         }
         assert!(store.completed.len() <= MAX_SNAPSHOTS);
     }
