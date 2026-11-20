@@ -29,6 +29,25 @@ use super::state::{install_current_source_done, ChainedInfo, PreloadedTrack};
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
+/// Only the JS content-driven automatic handoff path may audition a paired
+/// spectral EQ plan. Manual skips, gapless, paused/cold starts and ordinary
+/// fixed crossfades retain the established neutral source wrapper.
+fn spectral_trial_handoff_eligible(
+    manual: bool,
+    gapless: bool,
+    start_paused: bool,
+    crossfade_enabled: bool,
+    overlap: Option<f32>,
+    outgoing: Option<f32>,
+) -> bool {
+    !manual
+        && !gapless
+        && !start_paused
+        && crossfade_enabled
+        && overlap.is_some_and(|v| v.is_finite() && v > 0.0)
+        && outgoing.is_some_and(|v| v.is_finite() && v >= 0.0)
+}
+
 fn restore_chain_preload_if_current(
     state: &AudioEngine,
     snapshot: PreloadSnapshot,
@@ -182,13 +201,14 @@ pub async fn audio_play(
     // No audio is changed unless the JS content-driven AutoDJ handoff already
     // supplied explicit fade overrides. Manual skip, radio, gapless, cold
     // transitions, source collisions or missing analyses remain neutral.
-    let spectral_trial_low_cut = if !manual
-        && !gapless
-        && !start_paused
-        && state.crossfade_enabled.load(Ordering::Relaxed)
-        && crossfade_secs_override.is_some()
-        && outgoing_fade_secs_override.is_some()
-        && psysonic_analysis::spectral_autodj::live_trial::enabled()
+    let spectral_trial_low_cut = if spectral_trial_handoff_eligible(
+        manual,
+        gapless,
+        start_paused,
+        state.crossfade_enabled.load(Ordering::Relaxed),
+        crossfade_secs_override,
+        outgoing_fade_secs_override,
+    ) && psysonic_analysis::spectral_autodj::live_trial::enabled()
     {
         let previous_server = state.current_playback_server_id.lock().unwrap().clone();
         let previous_track = state.current_analysis_track_id.lock().unwrap().clone();
@@ -1146,4 +1166,40 @@ pub async fn audio_chain_preload(
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod spectral_trial_guard_tests {
+    use super::spectral_trial_handoff_eligible;
+
+    #[test]
+    fn only_automatic_content_driven_overlaps_are_eligible() {
+        assert!(spectral_trial_handoff_eligible(
+            false, false, false, true, Some(3.5), Some(0.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            true, false, false, true, Some(3.5), Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, true, false, true, Some(3.5), Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, true, true, Some(3.5), Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, false, false, Some(3.5), Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, false, true, None, Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, false, true, Some(3.5), None
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, false, true, Some(f32::NAN), Some(3.0)
+        ));
+        assert!(!spectral_trial_handoff_eligible(
+            false, false, false, true, Some(3.5), Some(-1.0)
+        ));
+    }
 }
