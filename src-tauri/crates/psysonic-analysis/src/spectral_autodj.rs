@@ -135,6 +135,82 @@ pub fn analyze_boundary_pcm(
     })
 }
 
+
+/// Scope for one ephemeral, already-verified audio representation. The caller
+/// must bind these fields to its current trusted source; this struct does not
+/// authenticate media bytes or create a cache entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpectralSourceToken {
+    pub server_scope: String,
+    pub library_scope: String,
+    pub track_id: String,
+    pub content_revision: String,
+    pub generation: u64,
+}
+
+impl SpectralSourceToken {
+    fn usable(&self) -> bool {
+        self.generation > 0
+            && !self.server_scope.trim().is_empty()
+            && !self.library_scope.trim().is_empty()
+            && !self.track_id.trim().is_empty()
+            && !self.content_revision.trim().is_empty()
+    }
+}
+
+/// The window is ephemeral and bounded; no settings, cache or playback state.
+#[derive(Debug, Clone)]
+pub struct SpectralBoundaryJob {
+    pub source: SpectralSourceToken,
+    pub boundary: Boundary,
+    pub window_seconds: f64,
+}
+
+/// Offline spectral measurement of previously acquired, verified audio bytes.
+/// The caller supplies a source-identity lookup; stale generations, different
+/// servers/libraries, changed content revisions and cancellation all return
+/// None. Source identity is rechecked per decoded packet and after the FFT.
+///
+/// Only a later worker integration may call this away from the audio thread.
+/// A live consumer must *also* recheck the token at the final handoff to avoid
+/// applying a result after a newer playback generation has superseded it.
+pub fn analyze_verified_boundary_bytes<F>(
+    bytes: &[u8],
+    job: &SpectralBoundaryJob,
+    mut current_source: F,
+) -> Option<SpectralBandRms>
+where
+    F: FnMut() -> Option<SpectralSourceToken>,
+{
+    if !job.source.usable() {
+        return None;
+    }
+    let mut current_matches = || current_source().as_ref() == Some(&job.source);
+    if !current_matches() {
+        return None;
+    }
+    let window = crate::analysis_cache::decode_spectral_pcm_window(
+        bytes,
+        job.boundary,
+        job.window_seconds,
+        &mut current_matches,
+    )?;
+    if !current_matches() {
+        return None;
+    }
+    // The PCM is already cut to the requested boundary; take its own head.
+    let bands = analyze_boundary_pcm(
+        &window.pcm,
+        window.sample_rate,
+        window.channels,
+        Boundary::Intro,
+    )?;
+    if !current_matches() {
+        return None;
+    }
+    Some(bands)
+}
+
 /// In-place radix-2 FFT; this is offline bounded work, never a rodio/CPAL hook.
 fn fft_in_place(re: &mut [f64], im: &mut [f64]) {
     let n = re.len();
@@ -304,3 +380,6 @@ mod tests {
         assert!(a.low.is_finite() && a.mid.is_finite() && a.high.is_finite());
     }
 }
+
+#[cfg(test)]
+mod boundary_tests;
