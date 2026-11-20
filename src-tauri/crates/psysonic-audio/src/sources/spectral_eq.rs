@@ -217,7 +217,19 @@ impl<S: Source<Item = f32>> Source for SpectralEqSource<S> {
     }
     fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
         self.inner.try_seek(pos)?;
-        self.dsp.reset();
+        if self.initialized {
+            // A live user seek ends the scheduled EQ handoff rather than
+            // replaying bass attenuation from the new seek position. A source
+            // prepared with B-head trim before its FIRST pull keeps the trial
+            // armed, and starts its envelope when actual playback begins.
+            self.dsp = ThreeBandEq::new(
+                self.inner.sample_rate().get(),
+                self.inner.channels().get(),
+                None,
+            );
+        } else {
+            self.dsp.reset();
+        }
         Ok(())
     }
 }
