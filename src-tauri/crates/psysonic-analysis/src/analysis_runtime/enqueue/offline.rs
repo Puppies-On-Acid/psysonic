@@ -109,6 +109,17 @@ pub async fn enqueue_offline_library_analysis_from_file(
     let bytes = tokio::fs::read(file_path)
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(trusted) = trusted_revision.as_ref() {
+        // This local file has already been fully read for ordinary analysis.
+        // Any armed spectral request reuses its bytes, without a new read.
+        let _ = crate::spectral_autodj::integration::offer_existing_original_if_armed(
+            server_index_key,
+            track_id,
+            &bytes,
+            bytes.len(),
+            trusted,
+        );
+    }
     let format_hint = file_path
         .extension()
         .and_then(|e| e.to_str())

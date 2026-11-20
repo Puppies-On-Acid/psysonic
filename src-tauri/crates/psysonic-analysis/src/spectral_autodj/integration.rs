@@ -137,6 +137,14 @@ impl SpectralCaptureCoordinator {
         }
     }
 
+    fn interested(&self, server: &str, library: &str, track: &str) -> bool {
+        self.state.try_lock().ok().is_some_and(|state| {
+            state.armed.as_ref().is_some_and(|armed| {
+                !armed.attempted && armed.request.matches(server, library, track)
+            })
+        })
+    }
+
     fn live_source(&self, ticket: u64) -> Option<SpectralSourceToken> {
         let source = {
             let state = self.state.try_lock().ok()?;
@@ -364,6 +372,29 @@ pub(crate) fn offer_existing_original_if_armed(
     LIVE_COORDINATOR.get().is_some_and(|manager| {
         manager.offer_completed_original(server, track, bytes, complete_len, trusted)
     })
+}
+
+/// Reuse only a locally verified original that another caller already read.
+/// The trusted revision is registered ONLY for an explicitly matching request.
+pub(crate) fn offer_verified_local_if_armed(
+    server: &str,
+    track: &str,
+    bytes: &[u8],
+) -> bool {
+    let Some(manager) = LIVE_COORDINATOR.get() else {
+        return false;
+    };
+    if !manager.interested(server, server, track) || bytes.is_empty() {
+        return false;
+    }
+    let md5_16kb = crate::analysis_cache::md5_first_16kb(bytes);
+    let trusted = TrustedAnalysisRevision {
+        generation: crate::analysis_runtime::begin_trusted_revision(server, track, &md5_16kb),
+        md5_16kb,
+        analysis_bytes_transcoded: false,
+        content_hash_server_id: None,
+    };
+    manager.offer_completed_original(server, track, bytes, bytes.len(), &trusted)
 }
 
 #[cfg(test)]

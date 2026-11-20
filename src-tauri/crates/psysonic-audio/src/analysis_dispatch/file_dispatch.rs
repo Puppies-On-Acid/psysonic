@@ -109,7 +109,7 @@ pub(crate) fn spawn_track_analysis_prepared_file(
         })
         .await
         {
-            Ok(Ok(bytes)) if !bytes.is_empty() => bytes,
+            Ok(Ok(bytes)) if !bytes.is_empty() && bytes.len() as u64 == file_len => bytes,
             Ok(Ok(_)) => return,
             Ok(Err(error)) => {
                 crate::app_eprintln!(

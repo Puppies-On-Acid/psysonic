@@ -148,3 +148,20 @@ fn live_http_provenance_requires_a_current_generation_guard() {
         "superseded captures must not emit stale provenance",
     );
 }
+#[test]
+fn only_finished_original_captures_are_eligible_for_spectral_reuse() {
+    for origin in [
+        TrackAnalysisOrigin::StreamDownloadComplete,
+        TrackAnalysisOrigin::InMemoryReplay,
+        TrackAnalysisOrigin::PrefetchOrCacheFile,
+        TrackAnalysisOrigin::GaplessTransition,
+    ] {
+        assert!(spectral_complete_origin_allowed(origin));
+    }
+    assert!(!spectral_complete_origin_allowed(
+        TrackAnalysisOrigin::StreamSpillFile
+    ));
+    assert!(!spectral_complete_origin_allowed(
+        TrackAnalysisOrigin::LocalFilePlayback
+    ));
+}

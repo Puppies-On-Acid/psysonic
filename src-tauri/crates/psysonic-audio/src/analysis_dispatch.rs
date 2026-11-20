@@ -77,6 +77,19 @@ fn is_http_stream_url(stream_url: Option<&str>) -> bool {
     stream_url.is_some_and(|u| u.starts_with("http://") || u.starts_with("https://"))
 }
 
+/// A stream spill may be partial; only known completed original captures may
+/// be offered to an armed spectral request. Never reuse transient prefixes.
+fn spectral_complete_origin_allowed(origin: TrackAnalysisOrigin) -> bool {
+    matches!(
+        origin,
+        TrackAnalysisOrigin::StreamDownloadComplete
+            | TrackAnalysisOrigin::InMemoryReplay
+            | TrackAnalysisOrigin::PrefetchOrCacheFile
+            | TrackAnalysisOrigin::GaplessChainReady
+            | TrackAnalysisOrigin::GaplessTransition
+    )
+}
+
 fn live_capture_origin(origin: TrackAnalysisOrigin) -> bool {
     matches!(
         origin,
@@ -349,6 +362,24 @@ pub(crate) async fn dispatch_track_analysis_bytes(
                         }
                     }
                 };
+                // This is the original ALREADY acquired for playback/ordinary
+                // analysis. A missing request is an allocation-free no-op.
+                if !analysis_bytes_transcoded && spectral_complete_origin_allowed(origin) {
+                    let trusted_original =
+                        psysonic_analysis::analysis_runtime::TrustedAnalysisRevision {
+                            md5_16kb: trusted.clone(),
+                            generation: trusted_generation,
+                            analysis_bytes_transcoded: false,
+                            content_hash_server_id: None,
+                        };
+                    let _ = psysonic_analysis::spectral_autodj::integration::offer_existing_original_if_armed(
+                        server_id,
+                        track_id,
+                        &analysis_bytes,
+                        analysis_bytes.len(),
+                        &trusted_original,
+                    );
+                }
                 let result =
                     psysonic_analysis::analysis_runtime::enqueue_track_analysis_trusted_owned(
                         app,
@@ -395,6 +426,16 @@ pub(crate) async fn dispatch_track_analysis_bytes(
                 bytes.len(),
             );
             return Ok(StreamProvenance::Original);
+        }
+        // A verified local original may be reused by an explicitly armed
+        // request; no file read, fetch or analysis occurs without that intent.
+        if stream_url.is_some_and(|url| url.starts_with("psysonic-local://"))
+            && spectral_complete_origin_allowed(origin)
+            && generation_guard_allows_analysis(origin, generation_guard)
+        {
+            let _ = psysonic_analysis::spectral_autodj::integration::offer_verified_local_if_armed(
+                server_id, track_id, &bytes,
+            );
         }
         psysonic_analysis::analysis_runtime::enqueue_track_analysis(
             app, server_id, track_id, &bytes, None, priority,
