@@ -335,4 +335,32 @@ mod tests {
         assert!(output.iter().zip(data.iter()).any(|(a, b)| (a - b).abs() > 0.01));
         assert!(output.iter().all(|v| v.is_finite()));
     }
+
+    #[test]
+    fn live_seek_disables_only_the_active_source_eq() {
+        let rate = std::num::NonZeroU32::new(48_000).unwrap();
+        let channels = std::num::NonZeroU16::new(2).unwrap();
+        let pcm = vec![0.4; 96_000];
+        let source = rodio::buffer::SamplesBuffer::new(channels, rate, pcm);
+        let (mut spectral, handle) = SpectralEqSource::new(source, Duration::from_secs(3));
+        assert!(handle.arm([-4.0, 0.0, 0.0]));
+        assert!(spectral.next().is_some());
+        assert!(spectral.dsp.active);
+        assert!(spectral.try_seek(Duration::from_millis(50)).is_ok());
+        assert!(!spectral.dsp.active);
+    }
+
+    #[test]
+    fn prestart_b_head_seek_preserves_pending_single_deck_arm() {
+        let rate = std::num::NonZeroU32::new(48_000).unwrap();
+        let channels = std::num::NonZeroU16::new(2).unwrap();
+        let pcm = vec![0.3; 96_000];
+        let source = rodio::buffer::SamplesBuffer::new(channels, rate, pcm);
+        let (mut spectral, handle) = SpectralEqSource::new(source, Duration::from_secs(3));
+        assert!(handle.arm([-4.0, 0.0, 0.0]));
+        assert!(spectral.try_seek(Duration::from_millis(50)).is_ok());
+        assert!(!spectral.initialized);
+        assert!(spectral.next().is_some());
+        assert!(spectral.dsp.active);
+    }
 }
