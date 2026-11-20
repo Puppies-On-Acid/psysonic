@@ -1,0 +1,40 @@
+# Spectral AutoDJ — integrated candidate
+
+**Tracking:** [PSY-016 #14](https://github.com/Puppies-On-Acid/psysonic/issues/14) and the [living Project Hub handoff #1](https://github.com/Puppies-On-Acid/psysonic/issues/1).
+
+**Status:** Implementation candidate on `feat/spectral-autodj`. The most recent owner-verified Windows baseline before this package was `cd3c445637143eb0f05bb150e57f0544222fc84c`: rustfmt, full `psysonic-analysis --lib`, and strict analysis Clippy PASS (owner summary). The new integrated code has **NOT** yet passed exact-head Windows/CI/independent review. Do not interpret the candidate as live, accepted, merged, or PR-ready.
+
+## Goal and actual integration boundary
+
+Source → validated original bytes → low-priority one-slot worker → ephemeral result → source/queue revalidation.
+
+A future owner-approved playback caller **must explicitly arm a request** using `SpectralCaptureRequest` with canonical server scope, library scope, track, boundary, window, immutable expected playback generation and the live `Arc<AtomicU64>` used to invalidate source changes. There is **no Tauri command, frontend event, setting, persistent cache, or player call site** to arm this today. Without an armed request, the new source hooks use only `OnceLock::get`, **do not allocate a new buffer or decode**, do not fetch audio, and do not affect normal AutoDJ.
+
+After an explicit request is armed, these existing completed-byte paths may offer their already-acquired original bytes:
+
+- **Remote playback and preloading:** `psysonic-audio/analysis_dispatch.rs` after the existing original-prefix proof and successful capture, including completed download, cached replay, preload and gapless boundary buffers. Transcodes and partial spill captures are excluded. A trusted original already fetched for ordinary analysis may also be reused; **Spectral AutoDJ never initiates that fetch**.
+- **Local playback:** an already-verified `psysonic-local://` original that the existing analysis dispatch fully received. Local-file dispatch additionally rejects a file read whose final length differs from the prior metadata. This is a safety check, not a new read.
+- **Offline dual-address library analysis:** `analysis_runtime/enqueue/offline.rs` offers an already-read file only when `verified_original` and the existing plan caused a full file read. When a waveform/loudness/cache row is complete and no bytes were otherwise read, there is **no new file read** just for spectral processing; the request falls back neutrally.
+- **Cached HTTP analysis:** the capture offer is before the existing analysis planner, so a completed original already in memory can still be used even if all ordinary cache rows are complete. The ordinary cache row alone does not imply encoded bytes are available.
+
+All capture paths retain the existing ordinary analysis dispatch and queue semantics. An attempted spectral capture does not consume the original caller's media buffer; it clones it **once only when an eligible armed request, positive full-byte provenance, trusted revision and quiet ordinary queue have all been checked**. Maximum source size is **64 MiB**. The existing decoder also makes an internal bounded copy. No speculative work is queued for later if resources are busy.
+
+## Concurrency and final use
+
+The process-wide ordinary HTTP/CPU activity generation increments on normal submissions and must remain unchanged throughout spectral decoding. One speculative CPU reservation and one `SpectralAdmissionGate` lease span the worker's lifetime. Normal HTTP/CPU work never waits for them; a new normal job revokes the spectral eligibility, while its worker releases the speculative slot only after actual exit (also after cancellation or panic). A blocked codec **cannot be forcibly preempted**; zero transient CPU overlap is **not** guaranteed.
+
+The coordinator holds one request, one potential in-flight result and one optional ready result. The completion observer validates the full `SpectralSourceToken`, current playback generation, current trusted original revision and ordinary queue generation. `take_capture_result` consumes the result at most once and repeats those checks. The **future player must recheck again** at the actual audio transition. An invalid, late, stale, unsupported or unavailable result yields `None`; ordinary AutoDJ is unchanged.
+
+The original-media proof is Psysonic's **MD5 of the first 16 KiB** plus externally asserted completed transfer/read and exact byte length, **not** a whole-file cryptographic checksum. Future playback activation must preserve this distinction. Do not silently approve a force-transcoded response as a verified original. Neither a streaming prefix nor a cached waveform row can substitute for a full encoded source.
+
+## Tests and performance evidence required
+
+Normal unit and regression tests include: owned-original length/scope/fingerprint/generation/transcode rejection; single speculative slot and ordinary queue priority; stale A→B→A and queue busy→idle; cancellation and deadline; mismatched and superseded server/library/revision; offline dual-address scope; initial request, duplicate offer, one-time result consumption and no-data neutral fallback. An end-to-end synthetic WAV test traverses captured original → actual Tokio blocking decoder/FFT → guarded ephemeral result. Audio-side tests verify which completed origins can be reused and preserve the exclusion of partial spills. Previously verified baseline: **250 normal `psysonic-analysis --lib` passes / 7 intentionally ignored** at `8472a96`, with formatting fixed at owner-reported green `cd3c4456`; the integrated additions have not yet been run.
+
+One consolidated Windows checker: `scripts/verify-spectral-autodj.ps1 -ExpectedHead <exact-feature-head> -IncludeBenchmarks`. It checks Rustfmt, analysis/audio library suites, strict dual-crate Clippy, TypeScript, frontend tests, frontend lint, dependency architecture and clean tracked Git state. The optional benchmarks are explicitly ignored in normal tests and run in **release mode** when requested. Existing PCM-only FFT diagnostics (3 warmups/25 measurements) and the new **full decode-plus-FFT** probe (synthetic 12s stereo WAV, checked-in synthetic M4A, LAME MP3, MP3 without Xing and 5.1 FLAC; both intro/outro) print valid/neutral outcomes and p50/p95/max wall time. An optional process high-water working-set sample uses Windows `Get-Process` or Linux `VmHWM`; it is **process-wide, not proof of decoder-specific allocations or a same-SHA incremental peak**. No fixed production performance budget is claimed.
+
+**Outstanding exit gates:** Windows run on the new SHA; compare CPU/enqueue/peak memory against a correctly configured baseline on the same machine and workload; review real complete audio variants and fallback under contention; independent read-only Claude Code review on the eventual SHA (deferred by owner quota, not waived); full upstream quality gates/CI; and owner-controlled manual playback listening after activation. AAC PNS-on strict PCM mismatch and MP3 lacking trustworthy Xing/LAME gapless metadata remain unresolved **without relaxed tolerances or changed codec policy**.
+
+## Owner approvals still required
+
+No auto-enable, audible EQ changes, new settings, Tauri IPC, persistent spectral schema, live DB modifications, `personal/integration` merge, upstream PR, deployment or release are authorized by this candidate. Owner approval is required before connecting the currently dormant request/result API to AutoDJ's transition renderer. The rollback is simply to leave the request API unused; without an armed request, normal playback and analysis remain unmodified except for a byte-length safety check on completed file analysis reads.
