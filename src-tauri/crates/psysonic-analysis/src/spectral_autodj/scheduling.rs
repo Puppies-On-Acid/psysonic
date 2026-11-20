@@ -286,7 +286,11 @@ mod tests {
             .is_some());
     }
 
-    fn verified_wav() -> (SpectralOwnedOriginal, SpectralBoundaryJob, SpectralSourceToken) {
+    fn verified_wav() -> (
+        SpectralOwnedOriginal,
+        SpectralBoundaryJob,
+        SpectralSourceToken,
+    ) {
         let bytes = wav();
         let mut selected = source();
         selected.content_revision = crate::analysis_cache::md5_first_16kb(&bytes);
