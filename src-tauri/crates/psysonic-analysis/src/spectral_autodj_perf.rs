@@ -144,7 +144,9 @@ fn measure_decode_plus_fft(label: &str, bytes: &[u8], boundary: Boundary) {
         window_seconds: 0.25,
     };
     for _ in 0..3 {
-        let _ = black_box(analyze_verified_boundary_bytes(bytes, &job, || Some(source.clone())));
+        let _ = black_box(analyze_verified_boundary_bytes(bytes, &job, || {
+            Some(source.clone())
+        }));
     }
 
     let peak_before = process_peak_working_set_bytes();
@@ -152,11 +154,8 @@ fn measure_decode_plus_fft(label: &str, bytes: &[u8], boundary: Boundary) {
     let mut measured = 0usize;
     for _ in 0..25 {
         let begin = Instant::now();
-        let result = analyze_verified_boundary_bytes(
-            black_box(bytes),
-            &job,
-            || Some(source.clone()),
-        );
+        let result =
+            analyze_verified_boundary_bytes(black_box(bytes), &job, || Some(source.clone()));
         durations.push(begin.elapsed());
         measured += usize::from(result.is_some());
         let _ = black_box(result);

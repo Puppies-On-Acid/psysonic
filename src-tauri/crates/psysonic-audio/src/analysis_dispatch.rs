@@ -94,8 +94,7 @@ fn spectral_complete_origin_allowed(origin: TrackAnalysisOrigin) -> bool {
 /// file-backed analysis begins; they must not be excluded by the HTTP-only
 /// completed-stream origin list.
 fn spectral_verified_local_origin_allowed(origin: TrackAnalysisOrigin) -> bool {
-    spectral_complete_origin_allowed(origin)
-        || origin == TrackAnalysisOrigin::LocalFilePlayback
+    spectral_complete_origin_allowed(origin) || origin == TrackAnalysisOrigin::LocalFilePlayback
 }
 
 fn live_capture_origin(origin: TrackAnalysisOrigin) -> bool {

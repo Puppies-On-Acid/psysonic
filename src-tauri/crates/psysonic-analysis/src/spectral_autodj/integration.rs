@@ -93,9 +93,7 @@ impl SpectralCaptureCoordinator {
         Self::with_epoch_probe(spectral_ordinary_pipeline_idle_epoch)
     }
 
-    fn with_epoch_probe(
-        probe: impl Fn() -> Option<u64> + Send + Sync + 'static,
-    ) -> Arc<Self> {
+    fn with_epoch_probe(probe: impl Fn() -> Option<u64> + Send + Sync + 'static) -> Arc<Self> {
         Arc::new(Self {
             state: Mutex::new(State::default()),
             gate: Arc::new(SpectralAdmissionGate::new()),
@@ -377,11 +375,7 @@ pub fn offer_existing_original_if_armed(
 
 /// Reuse only a locally verified original that another caller already read.
 /// The trusted revision is registered ONLY for an explicitly matching request.
-pub fn offer_verified_local_if_armed(
-    server: &str,
-    track: &str,
-    bytes: &[u8],
-) -> bool {
+pub fn offer_verified_local_if_armed(server: &str, track: &str, bytes: &[u8]) -> bool {
     let Some(manager) = LIVE_COORDINATOR.get() else {
         return false;
     };
@@ -504,9 +498,8 @@ mod tests {
         let (wav, trusted, request) = fixture();
         let queue = Arc::new(AtomicU64::new(5));
         let q = Arc::clone(&queue);
-        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(move || {
-            Some(q.load(Ordering::SeqCst))
-        });
+        let coordinator =
+            SpectralCaptureCoordinator::with_epoch_probe(move || Some(q.load(Ordering::SeqCst)));
         assert!(coordinator.arm(request));
         assert!(coordinator.offer_with(
             "spectral-test-server",
@@ -577,9 +570,8 @@ mod tests {
         let (wav, trusted, request) = fixture();
         let counter = Arc::new(AtomicU64::new(5));
         let read = Arc::clone(&counter);
-        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(move || {
-            Some(read.load(Ordering::SeqCst))
-        });
+        let coordinator =
+            SpectralCaptureCoordinator::with_epoch_probe(move || Some(read.load(Ordering::SeqCst)));
         assert!(coordinator.arm(request.clone()));
         assert!(coordinator.offer_with(
             "spectral-test-server",
