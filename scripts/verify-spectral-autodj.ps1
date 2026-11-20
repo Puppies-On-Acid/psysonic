@@ -79,6 +79,9 @@ finally {
     Pop-Location
 }
 
+Run-Check "Spectral trial profile isolation" {
+    node scripts/check-spectral-trial-config.mjs
+}
 Run-Check "TypeScript type check" {
     npx tsc --noEmit
 }
