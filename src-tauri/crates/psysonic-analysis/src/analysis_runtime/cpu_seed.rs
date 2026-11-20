@@ -147,11 +147,8 @@ mod spectral_idle_tests {
 
         {
             let mut state = http.lock().unwrap();
-            state.high.push_back((
-                "track".into(),
-                "synthetic-url".into(),
-                "server".into(),
-            ));
+            let queued = ("track".into(), "synthetic-url".into(), "server".into());
+            state.high.push_back(queued);
         }
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         http.lock().unwrap().high.clear();
@@ -179,10 +176,11 @@ mod spectral_idle_tests {
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         cpu.lock().unwrap().low.clear();
 
-        cpu.lock().unwrap().running.insert(
-            "synthetic".into(),
-            Arc::new(Mutex::new(Vec::new())),
-        );
+        let followers = Arc::new(Mutex::new(Vec::new()));
+        cpu.lock()
+            .unwrap()
+            .running
+            .insert("synthetic".into(), followers);
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
         cpu.lock().unwrap().running.clear();
         assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
