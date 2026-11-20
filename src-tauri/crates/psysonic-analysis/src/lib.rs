@@ -12,6 +12,8 @@ mod codec;
 pub mod commands;
 pub mod raw_probe;
 pub mod spectral_autodj;
+#[cfg(test)]
+mod spectral_autodj_perf;
 pub mod track_analysis_plan;
 pub mod track_enrichment;
 
