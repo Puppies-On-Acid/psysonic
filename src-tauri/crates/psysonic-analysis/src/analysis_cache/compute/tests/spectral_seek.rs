@@ -82,12 +82,9 @@ fn encode_m4a_with_ffmpeg(wav: &Path, output: &Path, pns_enabled: bool) {
         // stateful PNS random-number history without changing any user audio.
         command.args(["-aac_pns", "disable"]);
     }
-    let result = command
-        .arg(output)
-        .output()
-        .unwrap_or_else(|error| {
-            panic!("ffmpeg is required for this explicitly ignored test: {error}")
-        });
+    let result = command.arg(output).output().unwrap_or_else(|error| {
+        panic!("ffmpeg is required for this explicitly ignored test: {error}")
+    });
     assert!(
         result.status.success(),
         "ffmpeg could not encode synthetic M4A: {}",
