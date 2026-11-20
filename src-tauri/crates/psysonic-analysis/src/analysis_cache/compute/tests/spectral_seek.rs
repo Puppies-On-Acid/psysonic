@@ -682,7 +682,11 @@ fn spectral_codec_vbr_mp3_44100_gapless_calibration() {
     let wav = scratch.join("synthetic.wav");
     let mp3 = scratch.join("synthetic-44100-vbr.mp3");
     std::fs::write(&wav, synthetic_stereo_wav()).expect("write synthetic WAV");
-    encode_mp3_with_ffmpeg(&wav, &mp3, &["-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2"]);
+    encode_mp3_with_ffmpeg(
+        &wav,
+        &mp3,
+        &["-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2"],
+    );
     let bytes = std::fs::read(mp3).expect("read locally encoded 44.1kHz MP3");
     let full_pcm = full_decode_reference_at_rate(&bytes, RATE);
     let decoded_frames = full_pcm.len() / CHANNELS;
@@ -694,8 +698,8 @@ fn spectral_codec_vbr_mp3_44100_gapless_calibration() {
         .iter()
         .find(|track| track.id == session.track_id)
         .expect("selected MP3 track");
-    let delay = usize::try_from(track.delay.expect("LAME delay required"))
-        .expect("bounded encoder delay");
+    let delay =
+        usize::try_from(track.delay.expect("LAME delay required")).expect("bounded encoder delay");
     let padding = usize::try_from(track.padding.expect("LAME padding required"))
         .expect("bounded encoder padding");
     let reference_end = presentation_frames
@@ -780,8 +784,7 @@ fn spectral_codec_mp3_without_xing_metadata_diagnostic() {
     println!(
         "spectral-codec mp3-no-xing reported_frames={declared:?} \
          raw_frames={raw_frames} delay={:?} padding={:?}",
-        track.delay,
-        track.padding
+        track.delay, track.padding
     );
 
     // Source tokens can cancel without any decoder output regardless of the
