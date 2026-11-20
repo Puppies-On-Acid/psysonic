@@ -255,7 +255,10 @@ mod timestamp_tests {
         let target = frame_timestamp(origin, 566_800, 48_000, tb).unwrap();
         let packet = frame_timestamp(origin, 565_777, 48_000, tb).unwrap();
         assert_eq!(target.get(), 567_824);
-        assert_eq!(frames_until_timestamp(target, packet, 48_000, tb), Some(1023));
+        assert_eq!(
+            frames_until_timestamp(target, packet, 48_000, tb),
+            Some(1023)
+        );
         assert_eq!(frames_until_timestamp(packet, target, 48_000, tb), None);
     }
 
@@ -266,7 +269,10 @@ mod timestamp_tests {
         let frame = 566_801;
         let target = frame_timestamp(origin, frame, 48_000, fine).unwrap();
         let packet = frame_timestamp(origin, frame - 777, 48_000, fine).unwrap();
-        assert_eq!(frames_until_timestamp(target, packet, 48_000, fine), Some(777));
+        assert_eq!(
+            frames_until_timestamp(target, packet, 48_000, fine),
+            Some(777)
+        );
 
         let coarse = TimeBase::try_new(1, 1_000).unwrap();
         assert!(frame_timestamp(origin, frame, 48_000, coarse).is_none());

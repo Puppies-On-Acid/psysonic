@@ -236,12 +236,79 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
                 best_shift_frames = shift;
             }
         }
+        // Distinguish a later AAC decoder-state burst from a missing/extra
+        // packet (which would make the post-error segment match at a shift).
+        // Keep this diagnostic in the generated-audio ignored test only.
+        let mut first_bad_frame = None;
+        let mut last_bad_frame = None;
+        let mut bad_frame_count = 0usize;
+        for (frame, (actual, expected)) in tail
+            .pcm
+            .chunks_exact(CHANNELS)
+            .zip(reference.chunks_exact(CHANNELS))
+            .enumerate()
+        {
+            let bad = actual
+                .iter()
+                .zip(expected)
+                .any(|(a, b)| (a - b).abs() > 1.0e-5);
+            if bad {
+                first_bad_frame.get_or_insert(frame);
+                last_bad_frame = Some(frame);
+                bad_frame_count += 1;
+            }
+        }
+        let late_probe_frame = first_bad_frame
+            .unwrap_or(0)
+            .saturating_add(1024)
+            .min(requested_frames - 1);
+        let late_probe_frames = (requested_frames - late_probe_frame).min(4096);
+        let mut late_best_shift_frames = 0isize;
+        let mut late_best_probe_mean = f64::INFINITY;
+        for shift in -2048isize..=2048 {
+            let reference_start = nominal_start as isize
+                + shift
+                + late_probe_frame as isize;
+            if reference_start < 0
+                || reference_start as usize + late_probe_frames > full_frames
+            {
+                continue;
+            }
+            let mut error_sum = 0.0f64;
+            let mut count = 0usize;
+            for offset in (0..late_probe_frames).step_by(16) {
+                let sample_index = (late_probe_frame + offset) * CHANNELS;
+                let reference_index = (reference_start as usize + offset) * CHANNELS;
+                error_sum += f64::from(
+                    (tail.pcm[sample_index] - full_pcm[reference_index]).abs(),
+                );
+                count += 1;
+            }
+            let mean = error_sum / count as f64;
+            if mean < late_best_probe_mean {
+                late_best_probe_mean = mean;
+                late_best_shift_frames = shift;
+            }
+        }
+        let last_frames = requested_frames.min(1024);
+        let last_sample_start = (requested_frames - last_frames) * CHANNELS;
+        let last1024_max = tail.pcm[last_sample_start..]
+            .iter()
+            .zip(&reference[last_sample_start..])
+            .map(|(actual, expected)| (actual - expected).abs())
+            .fold(0.0_f32, f32::max);
+
         println!(
             "spectral-seek m4a duration_s={DURATION_SECONDS} full_frames={full_frames} \
              window_s={window_sec:.3} max_error={max_error:.8} \
              first1024_max={first_max:.8} after2048_max={after2048_max:.8} \
+             last1024_max={last1024_max:.8} first_bad_frame={first_bad_frame:?} \
+             last_bad_frame={last_bad_frame:?} bad_frames={bad_frame_count} \
              best_shift_frames={best_shift_frames} \
-             best_shift_probe_mean={best_probe_mean:.8}"
+             best_shift_probe_mean={best_probe_mean:.8} \
+             late_probe_frame={late_probe_frame} \
+             late_best_shift_frames={late_best_shift_frames} \
+             late_best_probe_mean={late_best_probe_mean:.8}"
         );
         if max_error > 1.0e-5 {
             failing_windows += 1;
