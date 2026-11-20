@@ -279,6 +279,68 @@ fn m4a_outro_matches_tail_of_full_reference_decode() {
         .zip(reference_tail)
         .map(|(actual, reference)| (actual - reference).abs())
         .fold(0.0_f32, f32::max);
+
+    if worst_error > 1.0e-5 {
+        // Diagnostics only: never adjust the assertion or accept a shifted
+        // window. Determine whether this is seek offset or AAC decoder state.
+        let channels = usize::from(tail.channels);
+        let total_frames = full.pcm.len() / channels;
+        let tail_start_frame = total_frames - expected_frames;
+        let edge_frames = expected_frames.min(1024);
+        let first_packet_max = tail.pcm[..edge_frames * channels]
+            .iter()
+            .zip(&reference_tail[..edge_frames * channels])
+            .map(|(actual, reference)| (actual - reference).abs())
+            .fold(0.0_f32, f32::max);
+        let end_offset = (expected_frames - edge_frames) * channels;
+        let last_packet_max = tail.pcm[end_offset..]
+            .iter()
+            .zip(&reference_tail[end_offset..])
+            .map(|(actual, reference)| (actual - reference).abs())
+            .fold(0.0_f32, f32::max);
+        let skip_two_packets = expected_frames.min(2048) * channels;
+        let post_warmup_max = tail.pcm[skip_two_packets..]
+            .iter()
+            .zip(&reference_tail[skip_two_packets..])
+            .map(|(actual, reference)| (actual - reference).abs())
+            .fold(0.0_f32, f32::max);
+
+        // Search only as a diagnostic: a nonzero shift is a failure, not a
+        // permissible alignment correction. Sampling every eighth frame keeps
+        // this small even in a Windows debug-test build.
+        let probe_frames = expected_frames.min(3072);
+        let mut best_shift_frames = 0_isize;
+        let mut best_probe_mean_error = f64::INFINITY;
+        for shift in -2048_isize..=2048 {
+            let shifted_start = tail_start_frame as isize + shift;
+            if shifted_start < 0 || shifted_start as usize + probe_frames > total_frames {
+                continue;
+            }
+            let mut error_sum = 0.0_f64;
+            let mut count = 0_usize;
+            for frame in (0..probe_frames).step_by(8) {
+                let output_index = frame * channels;
+                let reference_index = (shifted_start as usize + frame) * channels;
+                error_sum +=
+                    f64::from((tail.pcm[output_index] - full.pcm[reference_index]).abs());
+                count += 1;
+            }
+            let mean_error = error_sum / count as f64;
+            if mean_error < best_probe_mean_error {
+                best_probe_mean_error = mean_error;
+                best_shift_frames = shift;
+            }
+        }
+        eprintln!(
+            "M4A seek diagnostic: metadata_duration_sec={duration:.6} \
+             full_frames={total_frames} requested_frames={expected_frames} \
+             first1024_max={first_packet_max:.8} last1024_max={last_packet_max:.8} \
+             after2048_max={post_warmup_max:.8} \
+             best_shift_frames={best_shift_frames} \
+             best_shift_probe_mean_error={best_probe_mean_error:.8}"
+        );
+    }
+
     assert!(
         worst_error <= 1.0e-5,
         "M4A outro does not match reference PCM suffix; max error {worst_error}"
