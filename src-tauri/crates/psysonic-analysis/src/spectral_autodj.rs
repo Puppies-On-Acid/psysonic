@@ -380,8 +380,11 @@ mod tests {
     }
 }
 
-/// Experimental off-thread admission guard; currently disconnected from playback.
+/// Experimental off-thread admission guard; disconnected from playback.
 pub mod lifecycle;
+
+/// Optional background executor for already-available, trusted bytes only.
+pub mod executor;
 
 #[cfg(test)]
 mod boundary_tests;
