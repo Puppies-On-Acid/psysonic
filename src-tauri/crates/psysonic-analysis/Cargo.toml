@@ -12,13 +12,13 @@ psysonic-core = { path = "../psysonic-core" }
 tauri = { version = "2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
 tokio = { version = "1", features = ["rt", "time", "sync"] }
 reqwest = { version = "0.13", default-features = false, features = ["stream", "rustls", "gzip", "brotli"] }
 futures-util = "0.3"
 ebur128 = "0.1"
 md5 = "0.8"
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 symphonia = { version = "=0.6.1", default-features = false, features = ["flac", "mp3", "pcm", "aac", "alac", "isomp4", "vorbis", "ogg", "wav", "aiff", "adpcm", "all-meta"] }
 symphonia-adapter-libopus = "0.3"
 oximedia-mir = { version = "0.2.1", default-features = false, features = ["tempo", "mood"] }

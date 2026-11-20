@@ -46,9 +46,7 @@ pub fn analyze_boundary_pcm(
     channels: u16,
     boundary: Boundary,
 ) -> Option<SpectralBandRms> {
-    if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate)
-        || !(1..=8).contains(&channels)
-    {
+    if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) || !(1..=8).contains(&channels) {
         return None;
     }
     let channel_count = channels as usize;
@@ -121,8 +119,7 @@ pub fn analyze_boundary_pcm(
         }
     }
     // Parseval's theorem, corrected for the Hann window's squared energy.
-    let scale =
-        1.0 / (fft_size as f64 * window_norm * channel_count as f64 * window_count as f64);
+    let scale = 1.0 / (fft_size as f64 * window_norm * channel_count as f64 * window_count as f64);
     let powers = energy.map(|value| value * scale);
     if powers
         .iter()
@@ -207,7 +204,10 @@ mod tests {
                 let pcm = sine(sample_rate, frequency, 0.5, 0.5);
                 let e = analyze_mono(&pcm, sample_rate, Boundary::Intro);
                 let amplitudes = [e.low, e.mid, e.high];
-                assert!(amplitudes[band] > 0.32, "{sample_rate} Hz, {frequency} Hz, {e:?}");
+                assert!(
+                    amplitudes[band] > 0.32,
+                    "{sample_rate} Hz, {frequency} Hz, {e:?}"
+                );
                 for (idx, other) in amplitudes.into_iter().enumerate() {
                     if idx != band {
                         assert!(
@@ -225,7 +225,10 @@ mod tests {
         let pcm = sine(48_000, 700.0, 0.5, 0.5);
         let e = analyze_mono(&pcm, 48_000, Boundary::Intro);
         let total_rms = (e.low * e.low + e.mid * e.mid + e.high * e.high).sqrt();
-        assert!((total_rms - 0.5_f32 / 2.0_f32.sqrt()).abs() < 0.015, "{e:?}");
+        assert!(
+            (total_rms - 0.5_f32 / 2.0_f32.sqrt()).abs() < 0.015,
+            "{e:?}"
+        );
     }
 
     #[test]
@@ -250,7 +253,11 @@ mod tests {
     fn different_frequencies_in_each_channel_contribute_power() {
         let low = sine(48_000, 65.0, 0.5, 0.3);
         let high = sine(48_000, 7_000.0, 0.5, 0.3);
-        let stereo: Vec<_> = low.into_iter().zip(high).flat_map(|(a, b)| [a, b]).collect();
+        let stereo: Vec<_> = low
+            .into_iter()
+            .zip(high)
+            .flat_map(|(a, b)| [a, b])
+            .collect();
         let e = analyze_boundary_pcm(&stereo, 48_000, 2, Boundary::Outro).unwrap();
         assert!(e.low > 0.2 && e.high > 0.2, "{e:?}");
         assert!(e.mid < 0.05, "{e:?}");
