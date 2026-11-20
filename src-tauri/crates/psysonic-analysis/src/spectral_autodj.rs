@@ -210,6 +210,81 @@ where
     Some(bands)
 }
 
+
+/// Fully decoded, bounded boundary PCM for an explicit local audition.
+/// This public helper exposes only existing read-only analysis; callers must
+/// already own complete original bytes. It never downloads or writes media.
+pub struct SpectralAuditionPcm {
+    pub pcm: Vec<f32>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+pub fn decode_audition_pcm(
+    bytes: &[u8],
+    boundary: Boundary,
+    seconds: f64,
+) -> Option<SpectralAuditionPcm> {
+    let window = crate::analysis_cache::decode_spectral_pcm_window(
+        bytes, boundary, seconds, || true,
+    )?;
+    Some(SpectralAuditionPcm {
+        pcm: window.pcm,
+        sample_rate: window.sample_rate,
+        channels: window.channels,
+    })
+}
+
+/// Conservative Psysonic listening experiment, mirrored from
+/// src/lib/audio/spectralAutodj.ts; NOT a result proven by DJ research.
+/// The input is three comparable linear RMS values, never waveform peaks.
+/// Both track boundaries must have valid energy to shape incoming bass.
+pub fn plan_spectral_bass_handoff(
+    outgoing: Option<SpectralBandRms>,
+    incoming: Option<SpectralBandRms>,
+) -> f32 {
+    fn low_fraction(bands: SpectralBandRms) -> Option<f32> {
+        let [low, mid, high] = [bands.low, bands.mid, bands.high];
+        if ![low, mid, high].iter().all(|n| n.is_finite() && *n >= 0.0) {
+            return None;
+        }
+        let total = low + mid + high;
+        if !total.is_finite() || total <= 0.0 {
+            return None;
+        }
+        Some(low / total)
+    }
+    let Some((a, b)) = outgoing
+        .and_then(low_fraction)
+        .zip(incoming.and_then(low_fraction))
+    else {
+        return 0.0;
+    };
+    let strength = ((a.min(b) - 0.42) / (0.64 - 0.42)).clamp(0.0, 1.0);
+    -4.0 * strength
+}
+
+#[cfg(test)]
+mod audition_contract_tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_planner_policy_is_neutral_for_unknown_and_invalid() {
+        let heavy = SpectralBandRms { low: 0.8, mid: 0.1, high: 0.1 };
+        let light = SpectralBandRms { low: 0.1, mid: 0.45, high: 0.45 };
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), None), 0.0);
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(light)), 0.0);
+        assert_eq!(plan_spectral_bass_handoff(Some(heavy), Some(heavy)), -4.0);
+        assert_eq!(
+            plan_spectral_bass_handoff(
+                Some(heavy),
+                Some(SpectralBandRms { low: f32::NAN, mid: 1.0, high: 0.0 })
+            ),
+            0.0
+        );
+    }
+}
+
 /// In-place radix-2 FFT; this is offline bounded work, never a rodio/CPAL hook.
 fn fft_in_place(re: &mut [f64], im: &mut [f64]) {
     let n = re.len();
