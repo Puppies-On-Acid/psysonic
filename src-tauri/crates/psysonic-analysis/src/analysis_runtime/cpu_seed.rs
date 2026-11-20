@@ -134,68 +134,6 @@ fn ordinary_pipeline_idle_under_locks(
     )
 }
 
-#[cfg(test)]
-mod spectral_idle_tests {
-    use super::*;
-    use super::super::backfill_queue::AnalysisBackfillQueueState;
-
-    #[test]
-    fn idle_probe_accounts_for_http_cpu_and_pending_cpu_reservations() {
-        let http = Mutex::new(AnalysisBackfillQueueState::default());
-        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
-
-        {
-            let mut state = http.lock().unwrap();
-            let queued = ("track".into(), "synthetic-url".into(), "server".into());
-            state.high.push_back(queued);
-        }
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
-        http.lock().unwrap().high.clear();
-
-        {
-            let mut state = http.lock().unwrap();
-            state.in_progress.insert("synthetic".into(), AnalysisBackfillPriority::High);
-        }
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
-        http.lock().unwrap().in_progress.clear();
-
-        http.lock().unwrap().awaiting_cpu.insert("synthetic".into());
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
-        http.lock().unwrap().awaiting_cpu.clear();
-
-        let (_kind, _rx) = cpu.lock().unwrap().enqueue(
-            "server".into(),
-            "track".into(),
-            vec![1],
-            None,
-            None,
-            AnalysisBackfillPriority::Low,
-            0,
-        );
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
-        cpu.lock().unwrap().low.clear();
-
-        let followers = Arc::new(Mutex::new(Vec::new()));
-        cpu.lock().unwrap().running.insert("synthetic".into(), followers);
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
-        cpu.lock().unwrap().running.clear();
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
-    }
-
-    #[test]
-    fn idle_probe_never_waits_for_contended_locks() {
-        let http = Mutex::new(AnalysisBackfillQueueState::default());
-        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
-        let held_http = http.lock().unwrap();
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
-        drop(held_http);
-        let held_cpu = cpu.lock().unwrap();
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
-        drop(held_cpu);
-        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
-    }
-}
 
 pub fn analysis_pipeline_queue_stats() -> AnalysisPipelineQueueStatsDto {
     let pipeline_workers = ANALYSIS_BACKFILL
@@ -622,4 +560,72 @@ pub(super) fn enqueue_analysis_cpu_seed_job_under_admission(
         let _ = admitted.send(());
     }
     rx
+}
+
+#[cfg(test)]
+mod spectral_idle_tests {
+    use super::super::backfill_queue::AnalysisBackfillQueueState;
+    use super::*;
+
+    #[test]
+    fn idle_probe_accounts_for_http_cpu_and_pending_cpu_reservations() {
+        let http = Mutex::new(AnalysisBackfillQueueState::default());
+        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+
+        {
+            let mut state = http.lock().unwrap();
+            let queued = ("track".into(), "synthetic-url".into(), "server".into());
+            state.high.push_back(queued);
+        }
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().high.clear();
+
+        {
+            let mut state = http.lock().unwrap();
+            state
+                .in_progress
+                .insert("synthetic".into(), AnalysisBackfillPriority::High);
+        }
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().in_progress.clear();
+
+        http.lock().unwrap().awaiting_cpu.insert("synthetic".into());
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        http.lock().unwrap().awaiting_cpu.clear();
+
+        let (_kind, _rx) = cpu.lock().unwrap().enqueue(
+            "server".into(),
+            "track".into(),
+            vec![1],
+            None,
+            None,
+            AnalysisBackfillPriority::Low,
+            0,
+        );
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        cpu.lock().unwrap().low.clear();
+
+        let followers = Arc::new(Mutex::new(Vec::new()));
+        cpu.lock()
+            .unwrap()
+            .running
+            .insert("synthetic".into(), followers);
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(false));
+        cpu.lock().unwrap().running.clear();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+    }
+
+    #[test]
+    fn idle_probe_never_waits_for_contended_locks() {
+        let http = Mutex::new(AnalysisBackfillQueueState::default());
+        let cpu = Mutex::new(AnalysisCpuSeedQueueState::default());
+        let held_http = http.lock().unwrap();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
+        drop(held_http);
+        let held_cpu = cpu.lock().unwrap();
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), None);
+        drop(held_cpu);
+        assert_eq!(ordinary_pipeline_idle_under_locks(&http, &cpu), Some(true));
+    }
 }
