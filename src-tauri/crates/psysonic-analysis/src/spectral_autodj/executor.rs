@@ -20,6 +20,14 @@ use super::{
     analyze_verified_boundary_bytes, SpectralBandRms, SpectralBoundaryJob, SpectralSourceToken,
 };
 
+/// The result carries its full source identity for a later, mandatory handoff
+/// check. It is not a persistent cache entry or a playback authorization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpectralCompletedBoundary {
+    pub source: SpectralSourceToken,
+    pub bands: SpectralBandRms,
+}
+
 /// Spawn one bounded, optional analysis of already-acquired bytes.
 ///
 /// The caller owns the source verification, one shared gate, and the deadline.
@@ -36,7 +44,7 @@ pub fn try_spawn_with_available_bytes<F>(
     bytes: Vec<u8>,
     deadline: Instant,
     live_source: F,
-) -> Option<JoinHandle<Option<SpectralBandRms>>>
+) -> Option<JoinHandle<Option<SpectralCompletedBoundary>>>
 where
     F: Fn() -> Option<SpectralSourceToken> + Send + 'static,
 {
@@ -64,7 +72,10 @@ where
         });
         let current = live_source();
         if lease.finish(Instant::now(), current.as_ref()) {
-            bands
+            bands.map(|bands| SpectralCompletedBoundary {
+                source: job.source,
+                bands,
+            })
         } else {
             None
         }
@@ -139,16 +150,17 @@ mod tests {
         let bytes = tone_wav();
         let expected = analyze_verified_boundary_bytes(&bytes, &work, || Some(source()))
             .expect("valid offline reference");
-        assert!(gate.select_source(Some(selected)));
+        assert!(gate.select_source(Some(selected.clone())));
 
         let worker = try_spawn_with_available_bytes(&gate, work, bytes, deadline(), || {
             Some(source())
         })
         .expect("work admitted");
         let measured = worker.await.expect("worker joined").expect("valid bands");
-        assert_eq!(measured, expected);
-        assert!(measured.low > 0.2, "{measured:?}");
-        assert!(measured.high < 0.05, "{measured:?}");
+        assert_eq!(measured.source, selected);
+        assert_eq!(measured.bands, expected);
+        assert!(measured.bands.low > 0.2, "{measured:?}");
+        assert!(measured.bands.high < 0.05, "{measured:?}");
     }
 
     #[test]
@@ -156,17 +168,16 @@ mod tests {
         let gate = Arc::new(SpectralAdmissionGate::new());
         let selected = source();
         assert!(gate.select_source(Some(selected.clone())));
-        assert!(try_spawn_with_available_bytes(
+        let rejected = try_spawn_with_available_bytes(
             &gate,
             job(selected.clone()),
             tone_wav(),
             deadline(),
-            || Some(source())
-        )
-        .is_none());
-        assert!(gate
-            .try_admit(&job(selected), 1024, Instant::now(), deadline())
-            .is_some());
+            || Some(source()),
+        );
+        assert!(rejected.is_none());
+        let lease = gate.try_admit(&job(selected), 1024, Instant::now(), deadline());
+        assert!(lease.is_some());
     }
 
     #[tokio::test]
@@ -178,30 +189,40 @@ mod tests {
             server_scope: "server-b".into(),
             ..source()
         };
-        assert!(try_spawn_with_available_bytes(
+        let mismatched = try_spawn_with_available_bytes(
             &gate,
             job(selected.clone()),
             tone_wav(),
             deadline(),
-            move || Some(other_server.clone())
-        )
-        .is_none());
-        assert!(try_spawn_with_available_bytes(
+            move || Some(other_server.clone()),
+        );
+        assert!(mismatched.is_none());
+        let empty = try_spawn_with_available_bytes(
             &gate,
             job(selected.clone()),
             Vec::new(),
             deadline(),
-            || Some(source())
-        )
-        .is_none());
-        assert!(try_spawn_with_available_bytes(
+            || Some(source()),
+        );
+        assert!(empty.is_none());
+        let expired = try_spawn_with_available_bytes(
+            &gate,
+            job(selected.clone()),
+            tone_wav(),
+            Instant::now(),
+            || Some(source()),
+        );
+        assert!(expired.is_none());
+
+        let valid = try_spawn_with_available_bytes(
             &gate,
             job(selected),
             tone_wav(),
-            Instant::now(),
-            || Some(source())
+            deadline(),
+            || Some(source()),
         )
-        .is_none());
+        .expect("rejected jobs did not occupy a slot");
+        assert!(valid.await.expect("worker joined").is_some());
     }
 
     #[tokio::test]
@@ -238,14 +259,14 @@ mod tests {
         };
         assert!(gate.select_source(Some(other)));
         assert!(gate.select_source(Some(first.clone())));
-        assert!(try_spawn_with_available_bytes(
+        let overlapping = try_spawn_with_available_bytes(
             &gate,
             job(first.clone()),
             tone_wav(),
             deadline(),
-            || Some(source())
-        )
-        .is_none());
+            || Some(source()),
+        );
+        assert!(overlapping.is_none());
 
         resume_tx.send(()).expect("resume stale worker");
         assert!(worker.await.expect("worker joined").is_none());
