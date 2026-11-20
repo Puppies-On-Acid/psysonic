@@ -15,7 +15,7 @@ use super::{SpectralBoundaryJob, SpectralSourceToken};
 
 // Match the existing bounded decoder's encoded-input ceiling. Any future
 // decoder ceiling change must be reviewed alongside this admission limit.
-const MAX_ENCODED_BYTES: usize = 64 * 1024 * 1024;
+pub(super) const MAX_ENCODED_BYTES: usize = 64 * 1024 * 1024;
 const MIN_WINDOW_SECONDS: f64 = 0.1;
 const MAX_WINDOW_SECONDS: f64 = 6.0;
 

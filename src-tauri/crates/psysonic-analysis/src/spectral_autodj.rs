@@ -386,7 +386,10 @@ pub mod lifecycle;
 /// Optional background executor for already-available, trusted bytes only.
 pub mod executor;
 
-/// Advisory, fail-closed CPU-seed priority preflight; not connected to playback.
+/// Completed original-audio handoff with conservative identity checks.
+pub mod owned_source;
+
+/// Advisory, revocable CPU-seed priority preflight; not connected to playback.
 pub mod scheduling;
 
 #[cfg(test)]
