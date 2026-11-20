@@ -204,3 +204,86 @@ fn spectral_autodj_existing_codec_end_to_end_probe() {
         measure_decode_plus_fft(label, data, Boundary::Outro);
     }
 }
+
+/// Optional worker-path measurement: includes one owned-byte copy, original
+/// validation, speculative reservation, Tokio spawn_blocking and actual
+/// decoder+FFT. It has no live library or ordinary queue dependency. Still not
+/// a real contention/priority preemption measurement.
+#[tokio::test]
+#[ignore = "manual end-to-end speculative worker timing and working-set probe"]
+async fn spectral_autodj_worker_capture_latency_probe() {
+    use std::sync::Arc;
+
+    use crate::analysis_runtime::{ActivityEpoch, TrustedAnalysisRevision};
+    use crate::spectral_autodj::lifecycle::SpectralAdmissionGate;
+    use crate::spectral_autodj::owned_source::SpectralOwnedOriginal;
+    use crate::spectral_autodj::scheduling::try_spawn_verified_with_probe;
+    use crate::spectral_autodj::{SpectralBoundaryJob, SpectralSourceToken};
+
+    let wav = synthetic_stereo_wav_seconds(12);
+    let source = SpectralSourceToken {
+        server_scope: "perf-original".into(),
+        library_scope: "perf-original".into(),
+        track_id: "synthetic-wav".into(),
+        content_revision: crate::analysis_cache::md5_first_16kb(&wav),
+        generation: 1,
+    };
+    let trusted = TrustedAnalysisRevision {
+        md5_16kb: source.content_revision.clone(),
+        generation: 1,
+        analysis_bytes_transcoded: false,
+        content_hash_server_id: None,
+    };
+    let gate = Arc::new(SpectralAdmissionGate::new());
+    assert!(gate.select_source(Some(source.clone())));
+    let priority = Arc::new(ActivityEpoch::new(1));
+    let peak_before = process_peak_working_set_bytes();
+    let mut durations = Vec::with_capacity(25);
+
+    for iteration in 0..28 {
+        let started = Instant::now();
+        let original = SpectralOwnedOriginal::try_from_completed_original(
+            source.clone(),
+            &source,
+            "perf-original",
+            wav.len(),
+            &trusted,
+            wav.clone(),
+        )
+        .expect("trusted completed original");
+        let job = SpectralBoundaryJob {
+            source: source.clone(),
+            boundary: Boundary::Outro,
+            window_seconds: 0.25,
+        };
+        let current = source.clone();
+        let probe = Arc::clone(&priority);
+        let reserve = Arc::clone(&priority);
+        let task = try_spawn_verified_with_probe(
+            &gate,
+            job,
+            original,
+            Instant::now() + std::time::Duration::from_secs(10),
+            move || Some(current.clone()),
+            move || probe.current(),
+            move |epoch| reserve.try_reserve(epoch),
+        )
+        .expect("one speculative slot");
+        assert!(task.await.expect("blocking worker joined").is_some());
+        if iteration >= 3 {
+            durations.push(started.elapsed());
+        }
+    }
+    durations.sort_unstable();
+    let millis = |index: usize| durations[index].as_secs_f64() * 1_000.0;
+    println!(
+        "spectral-worker scenario=synthetic_wav_12s original_bytes={} \
+         warmups=3 runs=25 p50_ms={:.3} p95_ms={:.3} max_ms={:.3} \
+         peak_ws_before_bytes={peak_before:?} peak_ws_after_bytes={:?}",
+        wav.len(),
+        millis(12),
+        millis(23),
+        millis(24),
+        process_peak_working_set_bytes()
+    );
+}
