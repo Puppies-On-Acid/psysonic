@@ -484,6 +484,22 @@ mod tests {
         None
     }
 
+
+    async fn wait_until_ready(coordinator: &Arc<SpectralCaptureCoordinator>) {
+        for _ in 0..100 {
+            if coordinator
+                .state
+                .try_lock()
+                .ok()
+                .is_some_and(|state| state.ready.is_some())
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("background result was not ready");
+    }
+
     #[tokio::test]
     async fn complete_original_capture_yields_a_single_source_bound_result() {
         let (wav, trusted, request) = fixture();
@@ -581,7 +597,7 @@ mod tests {
             content_revision: trusted.md5_16kb.clone(),
             generation: trusted.generation,
         };
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        wait_until_ready(&coordinator).await;
         counter.store(6, Ordering::SeqCst);
         assert!(coordinator.take_if_current(&source).is_none());
         assert!(coordinator.arm(request.clone()));
@@ -682,7 +698,7 @@ mod tests {
             content_revision: trusted.md5_16kb,
             generation: trusted.generation,
         };
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        wait_until_ready(&coordinator).await;
         let next = crate::analysis_runtime::begin_trusted_revision(
             &request.server_scope,
             &request.track_id,
@@ -749,5 +765,30 @@ mod tests {
             &trusted,
             fake_spawn
         ));
+    }
+
+    #[tokio::test]
+    async fn cancel_after_completion_erases_ready_result() {
+        let (wav, trusted, request) = fixture();
+        let coordinator = SpectralCaptureCoordinator::with_epoch_probe(|| Some(5));
+        assert!(coordinator.arm(request));
+        assert!(coordinator.offer_with(
+            "spectral-test-server",
+            "track-x",
+            &wav,
+            wav.len(),
+            &trusted,
+            fake_spawn
+        ));
+        wait_until_ready(&coordinator).await;
+        coordinator.cancel();
+        let source = SpectralSourceToken {
+            server_scope: "spectral-test-server".into(),
+            library_scope: "spectral-test-server".into(),
+            track_id: "track-x".into(),
+            content_revision: trusted.md5_16kb,
+            generation: trusted.generation,
+        };
+        assert!(coordinator.take_if_current(&source).is_none());
     }
 }
