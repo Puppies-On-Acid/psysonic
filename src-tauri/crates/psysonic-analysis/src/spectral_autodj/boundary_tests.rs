@@ -321,8 +321,9 @@ fn m4a_outro_matches_tail_of_full_reference_decode() {
             for frame in (0..probe_frames).step_by(8) {
                 let output_index = frame * channels;
                 let reference_index = (shifted_start as usize + frame) * channels;
-                error_sum +=
+                let abs_error =
                     f64::from((tail.pcm[output_index] - full.pcm[reference_index]).abs());
+                error_sum += abs_error;
                 count += 1;
             }
             let mean_error = error_sum / count as f64;
