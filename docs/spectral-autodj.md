@@ -1,0 +1,117 @@
+# Spectral AutoDJ — phased development roadmap
+
+**Branch:** `feat/spectral-autodj`  
+**Initial baseline:** official upstream `Psysonic/psysonic:main` at `76ace706441387f74bfa11802546fa3faceba27f` (2026-11-19).  
+**Status:** Experimental, staged implementation begun; **not audible, not accepted, not PR-ready**.  
+**Authority:** [Psysonic Project Hub](https://github.com/Puppies-On-Acid/psysonic/blob/meta/project-hub/AGENTS.md); [living issue #1](https://github.com/Puppies-On-Acid/psysonic/issues/1). Owner requested branch creation and phased implementation. No permission inferred for any PR, merge, release, integration branch change, persisted setting or database migration.
+
+## Goal
+
+Make AutoDJ transitions less muddy and more musical with **independent per-track low/mid/high-frequency automation and separate faders**, preserving existing content-driven silence trimming, natural outro fades, overlap durations, preloading, playback-clock correctness, normalization, seek/pause, and offline/multi-server behavior. Ordinary AutoDJ must remain the default and a reliable fallback. The feature should serve diverse genres, **not indiscriminately sound like EDM mixing**.
+
+## Evidence and hypotheses
+
+- Kim, Yang, Nam, *Reverse-Engineering The Transition Regions of Real-World DJ Mixes using Sub-band Analysis with Convex Optimization* (NIME). [Source/illustration](https://github.com/mir-aidj/transition-analysis).
+- Kim, Yang, Nam, *Joint Estimation of Fader and Equalizer Gains of DJ Mixers Using Convex Optimization* (DAFx 2022). [Paper](https://www.dafx.de/paper-archive/2022/papers/DAFx20in22_paper_33.pdf). Main result: separating overall fader and frequency-band adjustments improves **reconstruction of existing DJ mixes**. It does **not** directly determine ideal transitions for arbitrary pairs without a reference DJ mix.
+- Chen et al., *Automatic DJ Transitions with Differentiable Audio Effects and Generative Adversarial Networks* (ICASSP 2022). [Research implementation](https://github.com/ChenPaulYu/DJtransGAN). An optional offline research baseline; **do not** add heavy ML inference or reuse redistributability-restricted audio/weights in the app.
+
+The initial **bass-handoff heuristic is a Psysonic experiment, not a validated result of those papers**. Compare it against the current AutoDJ in blind listening tests.
+
+## Protected existing architecture
+
+- [waveformSilence.ts](https://github.com/Psysonic/psysonic/blob/76ace706441387f74bfa11802546fa3faceba27f/src/lib/waveform/waveformSilence.ts): natural intro/outro and overlap scheduling.
+- [crossfadePreload.ts](https://github.com/Psysonic/psysonic/blob/76ace706441387f74bfa11802546fa3faceba27f/src/features/playback/store/crossfadePreload.ts): readiness gating; never start blending an unavailable stream.
+- [audioEventHandlers.ts](https://github.com/Psysonic/psysonic/blob/76ace706441387f74bfa11802546fa3faceba27f/src/features/playback/store/audioEventHandlers.ts): existing A-tail and auto-advance rules.
+- [decode/builders.rs](https://github.com/Psysonic/psysonic/blob/76ace706441387f74bfa11802546fa3faceba27f/src-tauri/crates/psysonic-audio/src/decode/builders.rs): decoding, per-track shared user EQ, equal-power fades, progress counting. Do not abuse the shared 10-band EQ controls as independent deck EQ.
+- [sink_swap.rs](https://github.com/Psysonic/psysonic/blob/76ace706441387f74bfa11802546fa3faceba27f/src-tauri/crates/psysonic-audio/src/sink_swap.rs) and [upstream PR #1826](https://github.com/Psysonic/psysonic/pull/1826): outgoing source cannot advance incoming audio clock. No new progress clock; preserve seekbar and timed lyrics alignment.
+
+## Phase 0 — establish branch and roadmap
+
+**Checkpoint:** branch created at current upstream main; roadmap committed; `personal/integration`, fork `main` and `meta/project-hub` kept separate. No existing branch rewritten/deleted.
+
+**Exit:** exact initial base and branch head recorded, roadmap includes requirements, tests, approval boundaries, rollback and research references.
+
+## Phase 1 — isolated control planner
+
+**Checkpoint:** initial candidate implemented in `src/lib/audio/spectralAutodj.ts` with `src/lib/audio/spectralAutodj.test.ts`. **Not wired to playback.** Pure TypeScript:
+- Versioned ephemeral transition plan; independent equal-power fader envelopes and per-track EQ decibel targets.
+- Conservative trial: if BOTH input boundary spectra are reliably low-heavy, attenuate incoming low band by **at most 4 dB**, smoothly restore low-band EQ to 0 dB before completion. Outgoing and incoming mid/high EQ remain neutral.
+- Invalid/missing/silent spectra -> neutral EQ; invalid overlap length -> no plan. No persisted settings, IPC, decoding, analysis requests or audio changes.
+- Units for the proposed input are **nonnegative linear RMS in three comparable frequency bands**. A waveform peak envelope alone is not a frequency spectrum. Thresholds 0.42/0.64 are **provisional** until measured; RMS aggregation may need to be revised to power/energy fractions after analysis calibration.
+
+**Exit:** exact-SHA targeted Vitest, TypeScript, lint, dependency checks, full relevant frontend suite and coverage. Verify mathematical invariants, neutral behavior, bound constraints and smoothness. A standalone TypeScript compile and small custom Node smoke are **not a substitute** for project Vitest and tests on Windows.
+
+## Phase 2 — bounded boundary spectral analysis
+
+**Status:** not started.
+- Provide comparable and appropriately normalized three-band spectra for the end of outgoing track A and start of incoming track B. Candidate frequency splits around **180 Hz and 3 kHz**; validate against the actual sample rate.
+- Use existing analysis infrastructure when suitable; do not confuse existing waveform bins with spectral-band data. Investigate reuse of already-decoded PCM to avoid duplicate downloads or expensive decoding.
+- Analyze off the realtime audio thread with strict time/CPU/memory bounds; default to neutral when analysis is missing, stale, incompatible or unreliable.
+- First attempt uses **ephemeral** results. A new persisted cache/schema needs explicit owner approval.
+- **Tests:** tones within/outside all three bands, silence, noise, mono/stereo, common and Hi-Res sample rates, short tracks, corrupt streams, natural fades, concurrent requests, cancellation, incorrect identity and offline/remote fallback.
+
+**Exit:** deterministic fixture correctness, finite outputs, bounded latency and measured CPU/memory against current analysis baseline.
+
+## Phase 3 — isolated Rust per-source DSP and offline renderer
+
+**Status:** not started.
+- Independent three-band processing state per source **in addition to**, not replacing, the user's 10-band EQ; preserve the existing equal-power faders and sample-clock wrappers.
+- Prototype low/high shelving and mid peaking biquads with smoothed, bounded control coefficients. Avoid allocations, locks, blocking and expensive coefficient rebuilds per audio sample.
+- Verify multichannel folding, stereo channel isolation, 44.1/48/88.2/96 kHz and device rates, seeks, gapless/Hi-Res resampling, pause/resume, normalization, recovery and no clipping/popping.
+- First validate an **offline PCM renderer** using generated synthetic fixtures; no changes to live default AutoDJ.
+- **Tests:** independent A/B deck controls, filter frequency responses, smooth automation, neutral pass-through, seek reset, sample-count invariants, bounded rendering cost and bad inputs.
+
+**Exit:** exact-SHA Rust fmt, tests, Clippy, relevant coverage, offline renders and read-only independent review. Live integration is a later separately reviewable gate.
+
+## Phase 4 — opt-in live AutoDJ integration
+
+**Status:** proposed, requires approval of specific user-facing settings/API design before changing persisted settings or Tauri payloads.
+- Add an **opt-in, disabled-by-default** experiment path with a versioned transition-plan handoff, preserving separate source generations and cancellation safety. Prefer non-persistent/internal experimental enablement first.
+- Plan generated **before** the existing AutoDJ overlap; do not alter existing trigger, next-track readiness, natural fade or backend sink swap scheduling.
+- Disabled/invalid/underrun/cold/unsupported -> use ordinary AutoDJ. Keep radio, previews and gapless unaffected.
+- **Tests:** manual/automatic next/previous, seeking mid-transition, high-resolution crossfade, clocks/lyrics, end-of-track, local/remote/cold stream, replaygain/LUFS, device loss/recovery, quick repeated handoffs, concurrent queue changes, song identity collisions and no leaks.
+- Manual app smoke requires a **disposable Tauri profile**, not the daily-drive database. No remote writes without permission.
+
+**Exit:** owner Windows listening smoke, no playback-clock regression, exact-SHA frontend/Rust quality gates and independent review.
+
+## Phase 5 — blind listening, calibration and upstream decision
+
+**Status:** proposed, not accepted.
+- At least **40 representative transition pairs** across electronic, metal, rock, acoustic, ambient, vocal-heavy tracks; include bass clashes, quiet intros and hard-ending/naturally fading material. Use legally obtained local samples; keep private filenames, server/library/track information out of public GitHub.
+- Loudness-matched randomized blind A/B: current AutoDJ vs spectral; evaluate preferences and specific glitches over multiple listeners if available, not only spectrogram reconstruction error.
+- Set CPU/latency/allocations budgets based on paired clean baseline measurements; document actual sample-rate/format/machine controls. Existing Psysonic **page** benchmark does not substitute for real-time DSP measurements.
+- To ship by default, require repeatable audible improvement **and** no clipping, clicks, underruns, clock drift or compatibility regressions.
+- Exact-HEAD CI/coverage, read-only Claude Code review via owner workflow, owner app test, PR scope and upstream contribution requirements apply. **Ask before creating a PR, merging or releasing.**
+
+## Windows verification checkpoint
+
+From a separate checked-out `feat/spectral-autodj` worktree with a clean tree and verified HEAD, Node >=24.15:
+
+```powershell
+npx vitest run src/lib/audio/spectralAutodj.test.ts
+npm run prebuild:release-notes
+npx tsc --noEmit
+npm run lint
+npm run dep:check
+npm test
+npm run test:coverage
+```
+
+For later Rust changes in `src-tauri`:
+
+```powershell
+cargo fmt --all --check
+cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Record exact SHA and command outputs. If Rust `play_session` tests require process-scoped `TZ=UTC`, document this as an environment qualification, restore the variable, and do not silently waive failures. Do not claim unrun tests passed.
+
+## Decision and rollback boundaries
+
+**Already authorized:** feature branch, roadmap, small isolated phase implementation/test work.  
+**Need owner decision:** persisted UI setting or different playback mode; IPC shape; on-disk analysis caching/schema; wider scope into beat/key/tempo matching or ML; performance/subjective acceptance thresholds after baseline measurement; any PR, merge, release or destructive operation.
+
+Phase 1 is completely inert and can be reverted without migrations. Later experiments must remain disableable without breaking original playback. Stop a rollout on any progress/lyrics drift, queue regression, underrun, clipping or filter click. Preserve all outstanding gates and test evidence.
+
+**Next:** run exact-HEAD Phase 1 frontend checks on Windows, then design Phase 2 spectral feature extraction with explicit sample units and CPU budget.
