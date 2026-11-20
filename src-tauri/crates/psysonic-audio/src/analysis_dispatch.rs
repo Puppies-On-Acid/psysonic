@@ -90,6 +90,14 @@ fn spectral_complete_origin_allowed(origin: TrackAnalysisOrigin) -> bool {
     )
 }
 
+/// Local originals have an independent positive provenance gate before
+/// file-backed analysis begins; they must not be excluded by the HTTP-only
+/// completed-stream origin list.
+fn spectral_verified_local_origin_allowed(origin: TrackAnalysisOrigin) -> bool {
+    spectral_complete_origin_allowed(origin)
+        || origin == TrackAnalysisOrigin::LocalFilePlayback
+}
+
 fn live_capture_origin(origin: TrackAnalysisOrigin) -> bool {
     matches!(
         origin,
@@ -430,7 +438,7 @@ pub(crate) async fn dispatch_track_analysis_bytes(
         // A verified local original may be reused by an explicitly armed
         // request; no file read, fetch or analysis occurs without that intent.
         if stream_url.is_some_and(|url| url.starts_with("psysonic-local://"))
-            && spectral_complete_origin_allowed(origin)
+            && spectral_verified_local_origin_allowed(origin)
             && generation_guard_allows_analysis(origin, generation_guard)
         {
             let _ = psysonic_analysis::spectral_autodj::integration::offer_verified_local_if_armed(

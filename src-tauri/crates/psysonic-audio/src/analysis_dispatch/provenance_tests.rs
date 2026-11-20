@@ -164,4 +164,10 @@ fn only_finished_original_captures_are_eligible_for_spectral_reuse() {
     assert!(!spectral_complete_origin_allowed(
         TrackAnalysisOrigin::LocalFilePlayback
     ));
+    assert!(spectral_verified_local_origin_allowed(
+        TrackAnalysisOrigin::LocalFilePlayback
+    ));
+    assert!(!spectral_verified_local_origin_allowed(
+        TrackAnalysisOrigin::StreamSpillFile
+    ));
 }
