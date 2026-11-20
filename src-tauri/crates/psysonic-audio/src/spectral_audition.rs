@@ -47,7 +47,7 @@ fn to_48k_stereo(input: &SpectralAuditionPcm) -> Result<Vec<f32>, String> {
     // Offline A/B comparisons deliberately refuse ambiguous multichannel
     // ordering instead of guessing a fold that differs from the live engine.
     let channels = usize::from(input.channels);
-    if !(channels == 1 || channels == 2)
+    if !(1..=2).contains(&channels)
         || !(8_000..=192_000).contains(&input.sample_rate)
         || input.pcm.len() % channels != 0
     {
@@ -312,5 +312,38 @@ mod tests {
             channels: 6,
         };
         assert!(to_48k_stereo(&multi).is_err());
+    }
+
+    #[test]
+    fn complete_synthetic_wav_pair_renders_two_listenable_files() {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "psysonic_spectral_audition_test_{}_{}", std::process::id(), seed
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let outgoing = dir.join("synthetic_a.wav");
+        let incoming = dir.join("synthetic_b.wav");
+        let output = dir.join("rendered");
+        write_stereo_pcm16_wav(&outgoing, &wave(62.0)).unwrap();
+        write_stereo_pcm16_wav(&incoming, &wave(88.0)).unwrap();
+
+        let report = render_audition_pair(
+            &outgoing, &incoming, &output, 3.5, 2,
+        )
+        .expect("synthetic original-to-audition pipeline");
+        assert!(report.intro_low_cut_db < -1.0);
+        assert!(report.first_file_spectral);
+        assert!(report.max_sample < 1.0);
+        let first = fs::read(output.join("Sample_1.wav")).unwrap();
+        let second = fs::read(output.join("Sample_2.wav")).unwrap();
+        assert_eq!(&first[..4], b"RIFF");
+        assert_eq!(&second[..4], b"RIFF");
+        assert_eq!(first.len(), second.len());
+        assert_ne!(first, second);
+        assert!(output.join("ANSWER_KEY.txt").exists());
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
