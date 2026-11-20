@@ -3,11 +3,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use super::super::decoder::open_decode_session;
 use super::super::spectral_decode::decode_spectral_pcm_window;
-use crate::spectral_autodj::Boundary;
+use crate::spectral_autodj::{analyze_boundary_pcm, Boundary};
 
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: usize = 2;
@@ -331,4 +331,213 @@ fn spectral_seek_long_m4a_matches_full_decode_reference() {
 #[ignore = "manual: ffmpeg AAC with PNS disabled, verify raw PCM seek invariance"]
 fn spectral_seek_long_m4a_without_pns_matches_full_decode_reference() {
     calibrate_long_m4a_seek(false);
+}
+
+/// Locally encode the same non-copyright synthetic WAV as variable-bitrate MP3.
+fn encode_vbr_mp3_with_ffmpeg(wav: &Path, output: &Path) {
+    let binary = std::env::var_os("PSYSONIC_TEST_FFMPEG")
+        .unwrap_or_else(|| std::ffi::OsString::from("ffmpeg"));
+    let result = Command::new(binary)
+        .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(wav)
+        .args(["-c:a", "libmp3lame", "-q:a", "2"])
+        .arg(output)
+        .output()
+        .expect("FFmpeg with libmp3lame is required for the manual VBR probe");
+    assert!(
+        result.status.success(),
+        "FFmpeg could not encode VBR MP3: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+/// Test-only full-reference endpoint: no unbounded full-file decode in the
+/// production window extractor. The generated source is exactly 12 seconds.
+fn synthetic_reference_end(bytes: &[u8], decoded_frames: usize) -> usize {
+    let session = open_decode_session(bytes, None).expect("probe synthetic codec timeline");
+    let reported_frames = session.timeline_hint.expect("codec must report total frames");
+    let endpoint = usize::try_from(reported_frames).expect("bounded generated fixture");
+    assert!(
+        (SAMPLE_RATE as usize * 11..=decoded_frames).contains(&endpoint),
+        "inconsistent container endpoint: {endpoint}, decoded {decoded_frames}"
+    );
+    endpoint
+}
+
+fn strict_reference_slice<'a>(
+    full_pcm: &'a [f32],
+    endpoint_frames: usize,
+    wanted_frames: usize,
+) -> &'a [f32] {
+    let start = endpoint_frames
+        .checked_sub(wanted_frames)
+        .expect("requested window cannot exceed the synthetic fixture");
+    &full_pcm[start * CHANNELS..endpoint_frames * CHANNELS]
+}
+
+/// Controlled investigation, NOT a production PNS acceptance rule.
+///
+/// PNS is permitted to synthesize different individual noise samples after a
+/// seek; measure the actual three-band RMS feature that Spectral AutoDJ uses.
+/// The original PNS-on strict PCM regression remains separately red; this test
+/// does not change or waive it. PNS-off still requires exact PCM agreement.
+#[test]
+#[ignore = "manual: FFmpeg AAC PNS-on/off band RMS + bounded decode/FFT timings"]
+fn spectral_codec_pns_rms_characterization() {
+    let scratch = ScratchAudioDir::create();
+    let wav_path = scratch.join("synthetic.wav");
+    std::fs::write(&wav_path, synthetic_stereo_wav()).expect("write original synthetic WAV");
+
+    for pns_enabled in [true, false] {
+        let out = if pns_enabled {
+            scratch.join("aac-pns-on.m4a")
+        } else {
+            scratch.join("aac-pns-off.m4a")
+        };
+        encode_m4a_with_ffmpeg(&wav_path, &out, pns_enabled);
+        let bytes = std::fs::read(out).expect("read locally encoded AAC");
+        let full_pcm = full_decode_reference(&bytes);
+        let endpoint = synthetic_reference_end(&bytes, full_pcm.len() / CHANNELS);
+
+        for window_seconds in [0.213_f64, 1.137, 3.817] {
+            let window_frames = (window_seconds * f64::from(SAMPLE_RATE)).ceil() as usize;
+            let reference = strict_reference_slice(&full_pcm, endpoint, window_frames);
+            let reference_bands =
+                analyze_boundary_pcm(reference, SAMPLE_RATE, CHANNELS as u16, Boundary::Outro)
+                    .expect("full-decode reference must have three-band energy");
+
+            let mut decode_ms = [0.0f64; 5];
+            let mut current = None;
+            for elapsed in &mut decode_ms {
+                let started = Instant::now();
+                let decoded =
+                    decode_spectral_pcm_window(&bytes, Boundary::Outro, window_seconds, || true)
+                        .expect("synthetic AAC seek should provide a complete window");
+                *elapsed = started.elapsed().as_secs_f64() * 1000.0;
+                current = Some(decoded);
+            }
+            let current = current.expect("measured five AAC windows");
+            assert_eq!(current.sample_rate, SAMPLE_RATE);
+            assert_eq!(usize::from(current.channels), CHANNELS);
+            assert_eq!(current.pcm.len(), reference.len());
+
+            let mut fft_ms = [0.0f64; 5];
+            let mut current_bands = None;
+            for elapsed in &mut fft_ms {
+                let started = Instant::now();
+                let bands = analyze_boundary_pcm(
+                    &current.pcm,
+                    current.sample_rate,
+                    current.channels,
+                    Boundary::Outro,
+                )
+                .expect("seek PCM must have three-band energy");
+                *elapsed = started.elapsed().as_secs_f64() * 1000.0;
+                current_bands = Some(bands);
+            }
+            let bands = current_bands.expect("measured five FFT runs");
+            let reference_rms = [reference_bands.low, reference_bands.mid, reference_bands.high];
+            let seek_rms = [bands.low, bands.mid, bands.high];
+            let rel_pct = std::array::from_fn::<f64, 3, _>(|index| {
+                let reference = f64::from(reference_rms[index]);
+                let actual = f64::from(seek_rms[index]);
+                100.0 * (actual - reference).abs() / reference.max(1.0e-5)
+            });
+            assert!(rel_pct.iter().all(|value| value.is_finite()));
+            let max_pcm = current
+                .pcm
+                .iter()
+                .zip(reference)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+
+            decode_ms.sort_by(f64::total_cmp);
+            fft_ms.sort_by(f64::total_cmp);
+            println!(
+                "spectral-codec aac pns={pns_enabled} window={window_seconds:.3} \
+                 max_pcm_error={max_pcm:.8} ref_rms={reference_rms:?} \
+                 seek_rms={seek_rms:?} relative_pct={rel_pct:?} \
+                 decode_ms_p50={:.3} fft_ms_p50={:.3} encoded_bytes={} \
+                 pcm_bytes={}",
+                decode_ms[2],
+                fft_ms[2],
+                bytes.len(),
+                current.pcm.len() * std::mem::size_of::<f32>()
+            );
+
+            if !pns_enabled {
+                assert!(
+                    max_pcm <= 1.0e-5,
+                    "PNS-disabled AAC must match sample-exact PCM, max {max_pcm}"
+                );
+            }
+        }
+    }
+}
+
+/// Real VBR MP3 seeks use packet timestamps, bitrate-reservoir state and
+/// encoder delay. Do not call MP3 compatible unless the exact 12s synthetic
+/// full-reference comparison passes at all three non-packet-aligned offsets.
+#[test]
+#[ignore = "manual: FFmpeg libmp3lame VBR seek vs full reference"]
+fn spectral_codec_vbr_mp3_seek_calibration() {
+    let scratch = ScratchAudioDir::create();
+    let wav = scratch.join("synthetic.wav");
+    let mp3 = scratch.join("synthetic-vbr.mp3");
+    std::fs::write(&wav, synthetic_stereo_wav()).expect("write original synthetic WAV");
+    encode_vbr_mp3_with_ffmpeg(&wav, &mp3);
+    let bytes = std::fs::read(mp3).expect("read locally encoded VBR MP3");
+    let full_pcm = full_decode_reference(&bytes);
+    let decoded_frames = full_pcm.len() / CHANNELS;
+    let endpoint = synthetic_reference_end(&bytes, decoded_frames);
+    println!(
+        "spectral-codec mp3-vbr full_frames={decoded_frames} \
+         endpoint_frames={endpoint} encoded_bytes={}",
+        bytes.len()
+    );
+
+    let mut bad_cases = 0usize;
+    for window_seconds in [0.213_f64, 1.137, 3.817] {
+        let wanted_frames = (window_seconds * f64::from(SAMPLE_RATE)).ceil() as usize;
+        let reference = strict_reference_slice(&full_pcm, endpoint, wanted_frames);
+        let begin = Instant::now();
+        let result = decode_spectral_pcm_window(&bytes, Boundary::Outro, window_seconds, || true)
+            .expect("VBR MP3 must provide complete window, or compatibility stays blocked");
+        let elapsed_ms = begin.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(result.sample_rate, SAMPLE_RATE);
+        assert_eq!(usize::from(result.channels), CHANNELS);
+        assert_eq!(result.pcm.len(), reference.len());
+        let mut first_bad = None;
+        let mut last_bad = None;
+        let mut worst_error = 0.0f32;
+        for (frame, (a, b)) in result
+            .pcm
+            .chunks_exact(CHANNELS)
+            .zip(reference.chunks_exact(CHANNELS))
+            .enumerate()
+        {
+            let error = a
+                .iter()
+                .zip(b)
+                .map(|(actual, reference)| (actual - reference).abs())
+                .fold(0.0f32, f32::max);
+            worst_error = worst_error.max(error);
+            if error > 1.0e-5 {
+                first_bad.get_or_insert(frame);
+                last_bad = Some(frame);
+            }
+        }
+        println!(
+            "spectral-codec mp3-vbr window={window_seconds:.3} \
+             max_pcm_error={worst_error:.8} first_bad={first_bad:?} \
+             last_bad={last_bad:?} decode_ms={elapsed_ms:.3}"
+        );
+        if worst_error > 1.0e-5 {
+            bad_cases += 1;
+        }
+    }
+    assert_eq!(
+        bad_cases, 0,
+        "VBR MP3 exact-seek mismatch in {bad_cases}/3 synthetic windows"
+    );
 }
