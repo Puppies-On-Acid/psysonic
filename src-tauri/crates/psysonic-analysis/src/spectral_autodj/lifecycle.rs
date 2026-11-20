@@ -299,16 +299,17 @@ mod tests {
             invalid.window_seconds = window_seconds;
             assert!(gate.try_admit(&invalid, 1024, now, deadline(now)).is_none());
         }
-        assert!(gate.try_admit(&job(current.clone()), 1024, now, now).is_none());
-        assert!(
-            gate.try_admit(
+        assert!(gate
+            .try_admit(&job(current.clone()), 1024, now, now)
+            .is_none());
+        assert!(gate
+            .try_admit(
                 &job(current.clone()),
                 1024,
                 now,
                 now - Duration::from_secs(1)
             )
-            .is_none()
-        );
+            .is_none());
         gate.state.lock().unwrap().last_ticket = u64::MAX;
         assert!(gate
             .try_admit(&job(current), MAX_ENCODED_BYTES, now, deadline(now))
@@ -340,7 +341,9 @@ mod tests {
             },
         ] {
             assert_eq!(wrong.track_id, selected.track_id);
-            assert!(gate.try_admit(&job(wrong), 1024, now, deadline(now)).is_none());
+            assert!(gate
+                .try_admit(&job(wrong), 1024, now, deadline(now))
+                .is_none());
         }
         let lease = gate
             .try_admit(&job(selected.clone()), 1024, now, deadline(now))
@@ -369,7 +372,9 @@ mod tests {
         gate.select_source(Some(different.clone()));
         gate.select_source(Some(original.clone()));
         assert!(!first.is_current(now, Some(&original)));
-        assert!(gate.try_admit(&job(original.clone()), 1024, now, deadline(now)).is_none());
+        assert!(gate
+            .try_admit(&job(original.clone()), 1024, now, deadline(now))
+            .is_none());
         assert!(!first.finish(now, Some(&original)));
         let second = gate
             .try_admit(&job(original.clone()), 1024, now, deadline(now))
@@ -399,10 +404,9 @@ mod tests {
             .unwrap();
         let later = now + Duration::from_millis(2);
         assert!(!lease.is_current(later, Some(&current)));
-        assert!(
-            gate.try_admit(&job(current.clone()), 1024, later, deadline(later))
-                .is_none()
-        );
+        assert!(gate
+            .try_admit(&job(current.clone()), 1024, later, deadline(later))
+            .is_none());
         assert!(!lease.finish(later, Some(&current)));
         let next = gate
             .try_admit(&job(current.clone()), 1024, later, deadline(later))
@@ -433,10 +437,14 @@ mod tests {
         });
         ready_rx.recv().unwrap();
         gate.select_source(Some(b.clone()));
-        assert!(gate.try_admit(&job(b.clone()), 1024, now, deadline(now)).is_none());
+        assert!(gate
+            .try_admit(&job(b.clone()), 1024, now, deadline(now))
+            .is_none());
         resume_tx.send(()).unwrap();
         assert!(!worker.join().unwrap());
-        let replacement = gate.try_admit(&job(b.clone()), 1024, now, deadline(now)).unwrap();
+        let replacement = gate
+            .try_admit(&job(b.clone()), 1024, now, deadline(now))
+            .unwrap();
         assert!(replacement.finish(now, Some(&b)));
     }
 
@@ -446,13 +454,17 @@ mod tests {
         let now = Instant::now();
         let current = source();
         gate.select_source(Some(current.clone()));
-        let lease = gate.try_admit(&job(current.clone()), 1024, now, deadline(now)).unwrap();
+        let lease = gate
+            .try_admit(&job(current.clone()), 1024, now, deadline(now))
+            .unwrap();
         let worker = thread::spawn(move || {
             let _lease = lease;
             panic!("synthetic worker failure");
         });
         assert!(worker.join().is_err());
-        let replacement = gate.try_admit(&job(current.clone()), 1024, now, deadline(now)).unwrap();
+        let replacement = gate
+            .try_admit(&job(current.clone()), 1024, now, deadline(now))
+            .unwrap();
         assert!(replacement.finish(now, Some(&current)));
     }
 }
