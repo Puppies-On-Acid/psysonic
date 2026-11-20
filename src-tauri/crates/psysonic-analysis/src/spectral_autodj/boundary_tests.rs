@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::f64::consts::PI;
 
 use super::{analyze_verified_boundary_bytes, Boundary, SpectralBoundaryJob, SpectralSourceToken};
-use crate::analysis_cache::decode_spectral_pcm_window;
+use crate::analysis_cache::{audio_duration_from_bytes, decode_spectral_pcm_window};
 
 const SEEKABLE_M4A: &[u8] =
     include_bytes!("../../../psysonic-audio/fixtures/isomp4_seek_normal.m4a");
@@ -248,4 +248,40 @@ fn outro_pcm_window_starts_at_exact_sample_after_packet_aligned_seek() {
             "outro offset {offset}: expected {expected}, got {actual}"
         );
     }
+}
+
+
+/// Calibration of the compressed seek boundary against a reference decode of
+/// the same bytes. This cannot prove accuracy across codecs or VBR layouts.
+#[test]
+fn m4a_outro_matches_tail_of_full_reference_decode() {
+    let duration = audio_duration_from_bytes(SEEKABLE_M4A).expect("M4A duration metadata");
+    assert!(
+        (0.3..=6.0).contains(&duration),
+        "test fixture should fit full-reference window: {duration}s"
+    );
+
+    let full = decode_spectral_pcm_window(SEEKABLE_M4A, Boundary::Intro, 6.0, || true)
+        .expect("reference decoded M4A");
+    let requested_sec = 0.213;
+    let tail = decode_spectral_pcm_window(SEEKABLE_M4A, Boundary::Outro, requested_sec, || true)
+        .expect("packet-aligned M4A outro");
+    assert_eq!(full.sample_rate, tail.sample_rate);
+    assert_eq!(full.channels, tail.channels);
+
+    let expected_frames = (requested_sec * f64::from(tail.sample_rate)).ceil() as usize;
+    let expected_samples = expected_frames * usize::from(tail.channels);
+    assert_eq!(tail.pcm.len(), expected_samples);
+    assert!(full.pcm.len() >= expected_samples);
+    let reference_tail = &full.pcm[full.pcm.len() - expected_samples..];
+    let worst_error = tail
+        .pcm
+        .iter()
+        .zip(reference_tail)
+        .map(|(actual, reference)| (actual - reference).abs())
+        .fold(0.0_f32, f32::max);
+    assert!(
+        worst_error <= 1.0e-5,
+        "M4A outro does not match reference PCM suffix; max error {worst_error}"
+    );
 }
