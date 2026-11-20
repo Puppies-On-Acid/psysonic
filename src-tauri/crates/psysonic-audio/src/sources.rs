@@ -7,8 +7,6 @@ use rodio::source::UniformSourceIterator;
 use rodio::Source;
 
 mod eq;
-// Live playback stays untouched until its opt-in interface is reviewed.
-#[allow(dead_code)]
 mod spectral_eq;
 
 #[cfg(test)]
@@ -16,7 +14,9 @@ mod spectral_eq;
 mod gapless_rate_tests;
 
 pub(crate) use eq::EqSource;
-pub(crate) use spectral_eq::{ThreeBandEnvelope, ThreeBandEq};
+pub(crate) use spectral_eq::{
+    SpectralEqHandle, SpectralEqSource, ThreeBandEnvelope, ThreeBandEq,
+};
 
 /// Give each gapless track its own output-rate converter before Rodio queues it.
 /// The mixer's converter wraps the *whole* Player queue and cannot detect a

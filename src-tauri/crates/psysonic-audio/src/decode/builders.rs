@@ -16,13 +16,20 @@ use super::gapless::parse_gapless_info;
 
 pub(crate) type BuiltSourceStack = PriorityBoostSource<
     CountingSource<
-        NotifyingSource<SpectrumTapSource<TriggeredFadeOut<EqualPowerFadeIn<EqSource<DynSource>>>>>,
+        NotifyingSource<
+            SpectrumTapSource<
+                TriggeredFadeOut<EqualPowerFadeIn<SpectralEqSource<EqSource<DynSource>>>>,
+            >,
+        >,
     >,
 >;
 
 /// Result of build_source: the fully-wrapped source plus metadata and control Arcs.
 pub(crate) struct BuiltSource {
     pub(crate) source: BuiltSourceStack,
+    /// Individually owned, neutral until explicitly armed for one outgoing-
+    /// verified AutoDJ handoff. Separate from the user's shared 10-band EQ.
+    pub(crate) spectral_eq_handle: SpectralEqHandle,
     pub(crate) duration_secs: f64,
     pub(crate) output_rate: u32,
     pub(crate) output_channels: u16,
@@ -191,7 +198,8 @@ pub(crate) fn build_source(
     let rate_src = PlaybackRateSource::new(dyn_src, playback_rate.clone());
     let rate_dyn = DynSource::new(rate_src);
     let eq_src = EqSource::new(rate_dyn, eq_gains, eq_enabled, eq_pre_gain);
-    let fade_in = EqualPowerFadeIn::new(eq_src, fade_in_dur);
+    let (spectral, spectral_eq_handle) = SpectralEqSource::new(eq_src, fade_in_dur);
+    let fade_in = EqualPowerFadeIn::new(spectral, fade_in_dur);
     let fade_out = TriggeredFadeOut::new(fade_in, fadeout_trigger.clone(), fadeout_samples.clone());
     // Per-track visualizer tap: post-EQ/post-fade and pre-sink volume. During a
     // crossfade its exclusive lease follows the incoming track/metadata; rodio
@@ -203,6 +211,7 @@ pub(crate) fn build_source(
 
     Ok(BuiltSource {
         source: boosted,
+        spectral_eq_handle,
         duration_secs: crate::playback_rate::effective_duration_secs(effective_dur, &playback_rate),
         output_rate,
         output_channels,
@@ -301,7 +310,8 @@ pub(crate) fn build_streaming_source(
     };
     let rate_dyn = DynSource::new(rate_src);
     let eq_src = EqSource::new(rate_dyn, eq_gains, eq_enabled, eq_pre_gain);
-    let fade_in = EqualPowerFadeIn::new(eq_src, fade_in_dur);
+    let (spectral, spectral_eq_handle) = SpectralEqSource::new(eq_src, fade_in_dur);
+    let fade_in = EqualPowerFadeIn::new(spectral, fade_in_dur);
     let fade_out = TriggeredFadeOut::new(fade_in, fadeout_trigger.clone(), fadeout_samples.clone());
     // Same per-track/incoming-lease semantics as `build_source` above.
     let tapped = SpectrumTapSource::new(fade_out);
@@ -314,6 +324,7 @@ pub(crate) fn build_streaming_source(
 
     Ok(BuiltSource {
         source: boosted,
+        spectral_eq_handle,
         duration_secs: crate::playback_rate::effective_duration_secs(effective_dur, &playback_rate),
         output_rate,
         output_channels,
