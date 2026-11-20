@@ -842,8 +842,8 @@ fn spectral_pcm_window_wav_boundaries_and_failure_guards() {
         assert_eq!(outro.sample_rate, SAMPLE_RATE);
         assert_eq!(usize::from(intro.channels), CHANNELS);
         assert_eq!(usize::from(outro.channels), CHANNELS);
-        assert_eq!(intro.pcm, full_pcm[..samples]);
-        assert_eq!(outro.pcm, full_pcm[full_pcm.len() - samples..]);
+        assert_eq!(intro.pcm.as_slice(), &full_pcm[..samples]);
+        assert_eq!(outro.pcm.as_slice(), &full_pcm[full_pcm.len() - samples..]);
     }
 
     // Invalid user-provided window values must be rejected before decoding.
@@ -853,25 +853,16 @@ fn spectral_pcm_window_wav_boundaries_and_failure_guards() {
             "invalid outro window should return neutral: {invalid}"
         );
     }
-    assert!(
-        decode_spectral_pcm_window(&[], Boundary::Intro, 0.213, || true).is_none()
-    );
-    assert!(
-        decode_spectral_pcm_window(b"not a sound file", Boundary::Outro, 0.213, || true)
-            .is_none()
-    );
+    assert!(decode_spectral_pcm_window(&[], Boundary::Intro, 0.213, || true).is_none());
+    let non_audio = b"not a sound file";
+    assert!(decode_spectral_pcm_window(non_audio, Boundary::Outro, 0.213, || true).is_none());
     // A truncated WAV with a valid header must not yield a partial spectrum.
     let truncated = &wav[..44 + 1_024];
-    assert!(
-        decode_spectral_pcm_window(truncated, Boundary::Outro, 0.213, || true)
-            .is_none()
-    );
+    assert!(decode_spectral_pcm_window(truncated, Boundary::Outro, 0.213, || true).is_none());
 
     // Cancellation before probe, during packet processing, and after enough
     // PCM is decoded must never hand stale analysis back to the caller.
-    assert!(
-        decode_spectral_pcm_window(&wav, Boundary::Outro, 0.213, || false).is_none()
-    );
+    assert!(decode_spectral_pcm_window(&wav, Boundary::Outro, 0.213, || false).is_none());
     let mut polls = 0usize;
     let result = decode_spectral_pcm_window(&wav, Boundary::Outro, 0.213, || {
         polls += 1;
@@ -880,4 +871,3 @@ fn spectral_pcm_window_wav_boundaries_and_failure_guards() {
     assert!(result.is_none());
     assert_eq!(polls, 3);
 }
-
