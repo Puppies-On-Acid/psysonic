@@ -50,7 +50,7 @@ pub fn analyze_boundary_pcm(
         return None;
     }
     let channel_count = channels as usize;
-    if pcm.len() % channel_count != 0 {
+    if !pcm.len().is_multiple_of(channel_count) {
         return None;
     }
     let frames = pcm.len() / channel_count;
